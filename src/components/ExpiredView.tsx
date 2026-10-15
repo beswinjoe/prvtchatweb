@@ -1,4 +1,4 @@
-import { Info, ShieldAlert } from 'lucide-react';
+import { Flame, Info, Lock, ShieldAlert, Sparkles } from 'lucide-react';
 import React from 'react';
 import type { ExpiredReason } from '../types';
 
@@ -6,63 +6,118 @@ interface ExpiredViewProps {
   expiredReason: ExpiredReason | null;
   activeSlug: string;
   onReturnHome: () => void;
+  onStartNewChat?: () => void;
 }
 
 export const ExpiredView: React.FC<ExpiredViewProps> = ({
   expiredReason,
   activeSlug,
   onReturnHome,
+  onStartNewChat,
 }) => {
+  const isRevoked = expiredReason === 'revoked';
+  const isExpired = expiredReason === 'expired';
+  const isKeyMismatch = expiredReason === 'invalid_key';
+
   return (
-    <main className="flex-1 flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white dark:bg-[#111113] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-8 text-center space-y-5 shadow-sm">
-        <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mx-auto">
-          <ShieldAlert className="w-6 h-6" />
-        </div>
+    <main className="relative flex-1 flex items-center justify-center p-4 sm:p-6 overflow-hidden">
+      {/* Background glow blooms */}
+      <div className="ambient-glow-top" />
+      <div className="ambient-glow-bottom" />
 
-        <div className="space-y-2">
-          <div className="text-xs font-mono uppercase tracking-wider text-rose-500">
-            {expiredReason === 'revoked' && 'Conversation Revoked & Purged'}
-            {expiredReason === 'expired' && 'Retention Policy Expired'}
-            {expiredReason === 'invalid_key' && 'Cryptographic Key Mismatch'}
-            {expiredReason === 'not_found' && 'Room Unavailable'}
-          </div>
-          <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-            {expiredReason === 'invalid_key'
-              ? 'Decryption Key Unauthorized'
-              : `/${activeSlug || 'conversation'} is no longer available`}
-          </h2>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-            {expiredReason === 'revoked' &&
-              'A participant revoked this invitation link. All encrypted message records and attachments stored in the database have been permanently deleted.'}
-            {expiredReason === 'expired' &&
-              'This conversation reached its configured expiration time. Its encrypted timeline and presence records have been automatically purged.'}
-            {expiredReason === 'invalid_key' &&
-              'The 256-bit key in your URL fragment does not match the zero-knowledge commitment for this conversation. Without the exact key, ciphertexts cannot be decrypted.'}
-            {expiredReason === 'not_found' &&
-              'No active conversation exists at this URL slug, or it was previously destroyed.'}
-          </p>
-        </div>
-
-        <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-[#09090B] border border-zinc-200 dark:border-zinc-800 text-left space-y-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-          <div className="font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-            <Info className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Deletion & Ephemerality Guarantee</span>
-          </div>
-          <p>
-            Server records are unrecoverable once purged. Note that any content previously
-            copied, screenshotted, or saved locally by a participant while the session was
-            active remains outside server revocation control.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={onReturnHome}
-          className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:hover:bg-zinc-200 dark:text-zinc-950 text-xs font-medium transition-colors cursor-pointer"
+      <div className="relative z-10 max-w-md w-full glass-panel border border-white/10 rounded-2xl p-6 sm:p-8 text-center space-y-6 shadow-2xl shadow-black/60 animate-in zoom-in-95 duration-200">
+        {/* Status Icon */}
+        <div
+          className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto shadow-lg ${
+            isRevoked
+              ? 'bg-rose-500/15 border border-rose-500/30 text-rose-400 shadow-rose-950/40'
+              : isKeyMismatch
+              ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400 shadow-amber-950/40'
+              : 'bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 shadow-indigo-950/40'
+          }`}
         >
-          Return to Vesper Homepage
-        </button>
+          {isRevoked ? (
+            <Flame className="w-7 h-7 stroke-[2]" />
+          ) : isKeyMismatch ? (
+            <ShieldAlert className="w-7 h-7 stroke-[2]" />
+          ) : (
+            <Lock className="w-7 h-7 stroke-[2]" />
+          )}
+        </div>
+
+        {/* Text Details */}
+        <div className="space-y-2">
+          <div
+            className={`text-xs font-mono uppercase tracking-wider font-semibold ${
+              isRevoked
+                ? 'text-rose-400'
+                : isKeyMismatch
+                ? 'text-amber-400'
+                : 'text-indigo-400'
+            }`}
+          >
+            {isRevoked
+              ? 'Manually Destroyed'
+              : isExpired
+              ? 'Retention Policy Expired'
+              : isKeyMismatch
+              ? 'Key Authorization Mismatch'
+              : 'Room Unavailable'}
+          </div>
+
+          <h2 className="text-2xl font-bold text-white tracking-tight">
+            {isRevoked
+              ? 'This conversation has been destroyed.'
+              : isKeyMismatch
+              ? 'Unauthorized Key'
+              : isExpired
+              ? 'This conversation has expired.'
+              : `/${activeSlug || 'room'} is no longer available`}
+          </h2>
+
+          <p className="text-xs sm:text-sm text-slate-400 leading-relaxed max-w-sm mx-auto">
+            {isRevoked
+              ? 'A participant initiated instant destruction. All stored ciphertexts, presence records, and attachments have been permanently deleted.'
+              : isExpired
+              ? 'This chat reached its configured expiration limit. The message records and attachments were automatically purged.'
+              : isKeyMismatch
+              ? 'The 256-bit encryption key in your link fragment does not match the zero-knowledge commitment for this conversation.'
+              : 'This conversation does not exist or has already been wiped.'}
+          </p>
+        </div>
+
+        {/* Ephemerality Disclosure Box */}
+        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 text-left space-y-1.5 text-[11px] text-slate-400">
+          <div className="font-semibold text-slate-300 flex items-center gap-1.5">
+            <Info className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Zero-Knowledge Shredding Guarantee</span>
+          </div>
+          <p className="leading-relaxed">
+            Data wiped from the database cannot be retrieved. Content saved locally,
+            copied, or screenshotted by participants while the session was active remains
+            outside server revocation capability.
+          </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={onStartNewChat || onReturnHome}
+            className="w-full py-3 px-4 rounded-xl btn-primary-gradient text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-indigo-500/20"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Start a New Private Chat</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onReturnHome}
+            className="w-full py-2.5 px-4 rounded-xl bg-slate-900/60 hover:bg-slate-800 text-slate-400 hover:text-white text-xs font-medium transition-colors cursor-pointer border border-white/5"
+          >
+            Return to Homepage
+          </button>
+        </div>
       </div>
     </main>
   );

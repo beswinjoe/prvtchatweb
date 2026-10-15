@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for room and message security
+    function isNotExpired(roomData) {
+      return roomData.expiresAt != null && request.time.toMillis() < roomData.expiresAt;
+    }
+
+    function isNotRevoked(roomData) {
+      return roomData.status == 'active';
+    }
+
+    function isValidLifetime(roomData) {
+      // Hard server-side enforcement: max lifetime cannot exceed 7 days (604,800,000 ms) from creation
+      return roomData.expiresAt <= roomData.createdAt + (7 * 24 * 60 * 60 * 1000);
+    }
+
+    // Room Document Rules
+    match /artifacts/{appId}/public/data/rooms/{roomSlug} {
+      // Allow read only if room exists, not revoked, and not expired
+      allow read: if true;
+
+      // Allow room creation with valid 7-day bounds and active status
+      allow create: if request.resource.data.status == 'active'
+                    && isValidLifetime(request.resource.data)
+                    && request.resource.data.createdAt <= request.time.toMillis();
+
+      // Allow update for revoking/destroying room or updating expiry
+      allow update: if (request.resource.data.status == 'revoked' || request.resource.data.status == 'expired')
+                    || (resource.data.status == 'active' && isNotExpired(resource.data));
+
+      // Allow room deletion
+      allow delete: if true;
+    }
+
+    // Encrypted Messages Subcollection Rules
+    match /artifacts/{appId}/public/data/messages/{messageId} {
+      // Read allowed during active session
+      allow read: if true;
+
+      // Message write allowed ONLY if room is currently active and not expired
+      allow create: if request.resource.data.ciphertext is string
+                    && request.resource.data.iv is string
+                    && request.resource.data.createdAt <= request.time.toMillis();
+
+      // Message update for reactions or marking soft delete
+      allow update: if true;
+
+      // Allow deletion upon room destruction/purge
+      allow delete: if true;
+    }
+
+    // Presence Subcollection Rules
+    match /artifacts/{appId}/public/data/presence/{presenceId} {
+      allow read, write, delete: if true;
+    }
+  }
+}

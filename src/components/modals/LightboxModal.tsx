@@ -1,4 +1,4 @@
-import { Lock } from 'lucide-react';
+import { Lock, X } from 'lucide-react';
 import React from 'react';
 import type { ImageAttachment } from '../../types';
 
@@ -15,27 +15,35 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-zinc-950/90 backdrop-blur-sm flex flex-col items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
-      <div className="max-w-4xl max-h-[85vh] relative" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="max-w-4xl max-h-[90vh] relative flex flex-col items-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute -top-10 right-0 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
         <img
           src={image.dataUrl}
           alt={image.originalName}
-          className="max-h-[80vh] w-auto rounded-xl border border-zinc-800 shadow-2xl"
+          className="max-h-[80vh] w-auto rounded-2xl border border-white/10 shadow-2xl shadow-indigo-950/40 object-contain"
         />
-        <div className="mt-3 flex items-center justify-between text-xs font-mono text-zinc-400">
+
+        <div className="mt-3.5 flex items-center justify-between w-full text-xs font-mono text-slate-400 px-2">
           <div className="flex items-center gap-2">
-            <Lock className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Decrypted in client memory · {image.originalName}</span>
+            <Lock className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="truncate max-w-xs">{image.originalName}</span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 cursor-pointer"
-          >
-            Close Viewer
-          </button>
+          <span className="text-slate-500">
+            {Math.round(image.approxBytes / 1024)} KB · Decrypted
+          </span>
         </div>
       </div>
     </div>

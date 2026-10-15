@@ -68,7 +68,7 @@ export interface CollectionReference {
 }
 
 export const appId: string =
-  typeof __app_id !== 'undefined' && __app_id ? __app_id : 'vesper-ephemeral-e2ee';
+  typeof __app_id !== 'undefined' && __app_id ? __app_id : 'prvtchat-ephemeral-e2ee';
 
 // Determine if valid Firebase credentials exist
 const parsedConfig = (() => {
@@ -115,7 +115,7 @@ export const isUsingMockRelay = !realAppInstance;
 const mockStore = new Map<string, Record<string, unknown>>();
 
 // Load saved data if present in localStorage
-const STORAGE_KEY = 'vesper_local_relay_v1';
+const STORAGE_KEY = 'prvtchat_local_relay_v1';
 try {
   if (typeof window !== 'undefined' && window.localStorage) {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -155,7 +155,7 @@ type BroadcastMessage =
 
 const channel: BroadcastChannel | null =
   typeof window !== 'undefined' && 'BroadcastChannel' in window
-    ? new BroadcastChannel('vesper_cross_tab_relay')
+    ? new BroadcastChannel('prvtchat_cross_tab_relay')
     : null;
 
 // Subscribers for doc & collection paths: Map<path, Set<() => void>>
@@ -198,10 +198,10 @@ const getMockUser = (): User => {
   let uid = '';
   try {
     if (typeof window !== 'undefined' && window.sessionStorage) {
-      uid = window.sessionStorage.getItem('vesper_mock_uid') || '';
+      uid = window.sessionStorage.getItem('prvtchat_mock_uid') || '';
       if (!uid) {
         uid = 'anon_' + Math.random().toString(36).substring(2, 9);
-        window.sessionStorage.setItem('vesper_mock_uid', uid);
+        window.sessionStorage.setItem('prvtchat_mock_uid', uid);
       }
     }
   } catch {

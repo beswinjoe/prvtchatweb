@@ -1,8 +1,8 @@
 // =============================================================================
-// VESPER E2EE MESSAGING — TYPE DEFINITIONS
+// PRVTCHAT E2EE MESSAGING — TYPE DEFINITIONS
 // =============================================================================
 
-/** Encrypted payload as stored in Firestore */
+/** Encrypted payload as stored in Firestore/Relay */
 export interface EncryptedPacket {
   iv: string;
   ciphertext: string;
@@ -17,29 +17,29 @@ export interface KeyMetadata {
 
 /** Expiration / TTL configuration option */
 export interface ExpirationOption {
-  id: string;
+  id: '2h' | '24h' | '3d' | '7d';
   label: string;
-  fullLabel: string;
-  ms: number | null;
+  shortLabel: string;
+  ms: number;
   desc: string;
 }
 
-/** Firestore room document */
+/** Room document metadata */
 export interface RoomData {
   slug: string;
   creatorUid: string;
   createdAt: number;
-  expiresAt: number | null;
+  expiresAt: number;
   ttlLabel: string;
   status: 'active' | 'revoked' | 'expired';
   allowPeerRevoke: boolean;
   keyCommitment: string;
-  encryptionCipher: string;
+  encryptionCipher: 'AES-256-GCM';
   revokedAt?: number;
   revokedBy?: string;
 }
 
-/** Raw Firestore message record (still encrypted) */
+/** Raw encrypted message record stored on server / relay */
 export interface EncryptedMessage {
   id: string;
   roomSlug: string;
@@ -116,50 +116,6 @@ export interface ActivePeer {
   lastSeen: number;
 }
 
-/** Hero preview demo message */
-export interface HeroDemoMessage {
-  id: string;
-  sender: string;
-  role: 'me' | 'peer';
-  text: string;
-  time: string;
-  iv: string;
-  ciphertext: string;
-}
-
-/** Demo key object used in the hero preview */
-export interface HeroDemoKey {
-  cryptoKey: CryptoKey;
-  keyString: string;
-  fingerprint: string;
-}
-
-/** Live workbench encryption output */
-export interface WorkbenchPacket {
-  keyFragment: string;
-  fullKey: string;
-  fingerprint: string;
-  iv: string;
-  ciphertext: string;
-}
-
-/** Architecture explainer step */
-export interface ArchitectureStep {
-  step: string;
-  title: string;
-  badge: string;
-  desc: string;
-  code: string;
-}
-
-/** Security test result */
-export interface TestResult {
-  id: string;
-  name: string;
-  passed: boolean;
-  detail: string;
-}
-
 /** Slug validation result */
 export interface SlugValidation {
   valid: boolean;
@@ -173,7 +129,7 @@ export interface SlugStatus {
   reason: string;
 }
 
-/** Participant color palette */
+/** Participant avatar styling palette */
 export interface ParticipantPalette {
   bg: string;
   text: string;
@@ -184,11 +140,5 @@ export interface ParticipantPalette {
 /** Navigation view state */
 export type AppView = 'landing' | 'chat' | 'expired';
 
-/** Reason why a room is no longer available */
+/** Reason why a room is no longer accessible */
 export type ExpiredReason = 'revoked' | 'expired' | 'not_found' | 'invalid_key';
-
-/** Burn simulator state */
-export type BurnState = 'active' | 'shredded';
-
-/** Hero preview perspective tab */
-export type PreviewTab = 'decrypted' | 'server' | 'split';
