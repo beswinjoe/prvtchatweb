@@ -33,15 +33,15 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
         <img
           src={image.dataUrl}
           alt={image.originalName}
-          className="max-h-[80vh] w-auto rounded-2xl border border-white/10 shadow-2xl shadow-indigo-950/40 object-contain"
+          className="max-h-[80vh] w-auto rounded-2xl border border-white/20 shadow-2xl object-contain"
         />
 
-        <div className="mt-3.5 flex items-center justify-between w-full text-xs font-mono text-slate-400 px-2">
+        <div className="mt-3.5 flex items-center justify-between w-full text-xs font-mono text-zinc-300 px-2">
           <div className="flex items-center gap-2">
-            <Lock className="w-3.5 h-3.5 text-indigo-400" />
+            <Lock className="w-3.5 h-3.5 text-zinc-300" />
             <span className="truncate max-w-xs">{image.originalName}</span>
           </div>
-          <span className="text-slate-500">
+          <span className="text-zinc-400">
             {Math.round(image.approxBytes / 1024)} KB · Decrypted
           </span>
         </div>

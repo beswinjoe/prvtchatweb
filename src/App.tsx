@@ -1049,7 +1049,13 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#07080D] text-slate-100 font-sans antialiased flex flex-col">
+    <div
+      className={`min-h-screen font-sans antialiased flex flex-col ${
+        currentView === 'landing'
+          ? 'bg-[#5B9EEA] text-[#0B132B]'
+          : 'bg-[#F4F7FB] text-zinc-900'
+      }`}
+    >
       {/* Top Navigation Bar */}
       <Navbar
         currentView={currentView}

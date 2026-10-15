@@ -1,4 +1,4 @@
-import { Flame, Info, Lock, ShieldAlert, Sparkles } from 'lucide-react';
+import { Flame, Info, Lock, ShieldAlert } from 'lucide-react';
 import React from 'react';
 import type { ExpiredReason } from '../types';
 
@@ -20,28 +20,24 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
   const isKeyMismatch = expiredReason === 'invalid_key';
 
   return (
-    <main className="relative flex-1 flex items-center justify-center p-4 sm:p-6 overflow-hidden">
-      {/* Background glow blooms */}
-      <div className="ambient-glow-top" />
-      <div className="ambient-glow-bottom" />
-
-      <div className="relative z-10 max-w-md w-full glass-panel border border-white/10 rounded-2xl p-6 sm:p-8 text-center space-y-6 shadow-2xl shadow-black/60 animate-in zoom-in-95 duration-200">
+    <main className="relative flex-1 flex items-center justify-center p-4 sm:p-6 bg-white text-zinc-950">
+      <div className="max-w-md w-full card-clean rounded-2xl p-6 sm:p-8 text-center space-y-6 shadow-sm animate-in zoom-in-95 duration-150">
         {/* Status Icon */}
         <div
-          className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto shadow-lg ${
+          className={`w-12 h-12 rounded-xl flex items-center justify-center mx-auto ${
             isRevoked
-              ? 'bg-rose-500/15 border border-rose-500/30 text-rose-400 shadow-rose-950/40'
+              ? 'bg-rose-50 border border-rose-200 text-rose-700'
               : isKeyMismatch
-              ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400 shadow-amber-950/40'
-              : 'bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 shadow-indigo-950/40'
+              ? 'bg-amber-50 border border-amber-200 text-amber-700'
+              : 'bg-zinc-100 border border-zinc-200 text-zinc-900'
           }`}
         >
           {isRevoked ? (
-            <Flame className="w-7 h-7 stroke-[2]" />
+            <Flame className="w-6 h-6 stroke-[2]" />
           ) : isKeyMismatch ? (
-            <ShieldAlert className="w-7 h-7 stroke-[2]" />
+            <ShieldAlert className="w-6 h-6 stroke-[2]" />
           ) : (
-            <Lock className="w-7 h-7 stroke-[2]" />
+            <Lock className="w-6 h-6 stroke-[2]" />
           )}
         </div>
 
@@ -50,22 +46,22 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
           <div
             className={`text-xs font-mono uppercase tracking-wider font-semibold ${
               isRevoked
-                ? 'text-rose-400'
+                ? 'text-rose-700'
                 : isKeyMismatch
-                ? 'text-amber-400'
-                : 'text-indigo-400'
+                ? 'text-amber-700'
+                : 'text-zinc-500'
             }`}
           >
             {isRevoked
-              ? 'Manually Destroyed'
+              ? 'Destroyed'
               : isExpired
-              ? 'Retention Policy Expired'
+              ? 'Expired'
               : isKeyMismatch
-              ? 'Key Authorization Mismatch'
+              ? 'Key Mismatch'
               : 'Room Unavailable'}
           </div>
 
-          <h2 className="text-2xl font-bold text-white tracking-tight">
+          <h2 className="text-2xl font-bold text-zinc-950 tracking-tight">
             {isRevoked
               ? 'This conversation has been destroyed.'
               : isKeyMismatch
@@ -75,7 +71,7 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
               : `/${activeSlug || 'room'} is no longer available`}
           </h2>
 
-          <p className="text-xs sm:text-sm text-slate-400 leading-relaxed max-w-sm mx-auto">
+          <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed max-w-sm mx-auto">
             {isRevoked
               ? 'A participant initiated instant destruction. All stored ciphertexts, presence records, and attachments have been permanently deleted.'
               : isExpired
@@ -87,10 +83,10 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
         </div>
 
         {/* Ephemerality Disclosure Box */}
-        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 text-left space-y-1.5 text-[11px] text-slate-400">
-          <div className="font-semibold text-slate-300 flex items-center gap-1.5">
-            <Info className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Zero-Knowledge Shredding Guarantee</span>
+        <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 text-left space-y-1.5 text-[11px] text-zinc-600">
+          <div className="font-semibold text-zinc-900 flex items-center gap-1.5">
+            <Info className="w-3.5 h-3.5 text-zinc-700" />
+            <span>Deletion Guarantee</span>
           </div>
           <p className="leading-relaxed">
             Data wiped from the database cannot be retrieved. Content saved locally,
@@ -104,16 +100,16 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
           <button
             type="button"
             onClick={onStartNewChat || onReturnHome}
-            className="w-full py-3 px-4 rounded-xl btn-primary-gradient text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-indigo-500/20"
+            className="w-full py-3 px-4 rounded-xl btn-black text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Sparkles className="w-4 h-4" />
+            <Lock className="w-3.5 h-3.5" />
             <span>Start a New Private Chat</span>
           </button>
 
           <button
             type="button"
             onClick={onReturnHome}
-            className="w-full py-2.5 px-4 rounded-xl bg-slate-900/60 hover:bg-slate-800 text-slate-400 hover:text-white text-xs font-medium transition-colors cursor-pointer border border-white/5"
+            className="w-full py-2.5 px-4 rounded-xl btn-outline text-xs font-medium cursor-pointer"
           >
             Return to Homepage
           </button>

@@ -2,7 +2,6 @@ import {
   Clock,
   Lock,
   Share2,
-  Sparkles,
   Trash2,
   WifiOff,
 } from 'lucide-react';
@@ -39,8 +38,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const timeLeft = roomData?.expiresAt ? formatTimeRemaining(roomData.expiresAt, nowTick) : null;
 
+  const isLanding = currentView === 'landing';
+
   return (
-    <header className="sticky top-0 z-40 h-16 border-b border-white/5 bg-[#07080D]/80 backdrop-blur-xl px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+    <header
+      className={`sticky top-0 z-40 transition-colors ${
+        isLanding
+          ? 'h-20 bg-[#5B9EEA] px-4 sm:px-8 lg:px-12 flex items-center justify-between'
+          : 'h-16 border-b border-zinc-200 bg-white px-4 sm:px-6 lg:px-8 flex items-center justify-between'
+      }`}
+    >
       {/* Brand Logo */}
       <div className="flex items-center gap-3">
         <button
@@ -49,34 +56,87 @@ export const Navbar: React.FC<NavbarProps> = ({
           className="flex items-center gap-2.5 text-left group focus:outline-none cursor-pointer"
           title="PRVTCHAT Home"
         >
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
-            <Lock className="w-4 h-4 stroke-[2.4]" />
+          <div
+            className={`flex items-center justify-center transition-colors ${
+              isLanding
+                ? 'w-8 h-8 rounded-full bg-[#0B0F19] text-white group-hover:bg-[#182234] shadow-xs'
+                : 'w-7 h-7 rounded-lg bg-zinc-950 text-white group-hover:bg-zinc-800'
+            }`}
+          >
+            <Lock className="w-3.5 h-3.5 stroke-[2.4]" />
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-extrabold tracking-tight text-base text-white">
-              PRVT<span className="text-indigo-400">CHAT</span>
+            <span
+              className={`font-bold tracking-tight ${
+                isLanding ? 'text-lg sm:text-xl text-[#0B132B]' : 'text-base text-zinc-950'
+              }`}
+            >
+              PRVTCHAT
             </span>
-            <span className="hidden sm:inline-block text-[10px] font-mono tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-semibold">
-              AES-256-GCM
-            </span>
+            {!isLanding && (
+              <span className="hidden sm:inline-block text-[10px] font-mono tracking-wider px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200 font-medium">
+                E2EE
+              </span>
+            )}
           </div>
         </button>
 
         {/* In-Chat Room Slug Badge */}
         {currentView === 'chat' && activeSlug && (
-          <div className="hidden sm:flex items-center gap-1.5 pl-3 border-l border-white/10 text-xs font-mono text-slate-300">
-            <span className="text-slate-500">room:</span>
-            <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-indigo-300 font-semibold">
+          <div className="hidden sm:flex items-center gap-1.5 pl-3 border-l border-zinc-200 text-xs font-mono text-zinc-600">
+            <span>room:</span>
+            <span className="px-2 py-0.5 rounded bg-zinc-100 border border-zinc-200 text-zinc-900 font-semibold">
               /{activeSlug}
             </span>
           </div>
         )}
       </div>
 
-      {/* Center: In-Chat Live Expiration Countdown */}
+      {/* Landing Center Navigation Links (Matching Screenshot) */}
+      {isLanding && (
+        <nav className="hidden md:flex items-center gap-7 lg:gap-9 text-sm font-medium text-[#0B132B]/85">
+          <button
+            type="button"
+            onClick={onOpenSecurityModal}
+            className="hover:text-[#0B132B] transition-colors cursor-pointer"
+          >
+            Features
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSecurityModal}
+            className="hover:text-[#0B132B] transition-colors cursor-pointer"
+          >
+            How it works
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSecurityModal}
+            className="hover:text-[#0B132B] transition-colors cursor-pointer"
+          >
+            Who it's for
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSecurityModal}
+            className="hover:text-[#0B132B] transition-colors cursor-pointer"
+          >
+            Privacy
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSecurityModal}
+            className="hover:text-[#0B132B] transition-colors cursor-pointer"
+          >
+            FAQ
+          </button>
+        </nav>
+      )}
+
+      {/* Center: Live Expiration Countdown (In Chat) */}
       {currentView === 'chat' && timeLeft && (
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/90 border border-white/10 text-xs font-mono text-slate-300 shadow-xs">
-          <Clock className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-700">
+          <Clock className="w-3.5 h-3.5 text-zinc-500" />
           <span>{timeLeft}</span>
         </div>
       )}
@@ -84,35 +144,27 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Right Controls */}
       <div className="flex items-center gap-2.5">
         {!isOnline && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-medium">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
             <WifiOff className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Offline</span>
           </div>
         )}
 
-        {currentView === 'landing' ? (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onOpenSecurityModal}
-              className="text-xs font-medium text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/5 transition-colors cursor-pointer hidden sm:block"
-            >
-              Security
-            </button>
+        {isLanding ? (
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={onOpenJoinModal}
-              className="text-xs font-medium text-slate-300 hover:text-white px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/5 transition-colors cursor-pointer hidden sm:block"
+              className="text-xs font-medium text-[#0B132B] hover:text-black px-3 py-1.5 transition-colors cursor-pointer hidden sm:block"
             >
-              Join
+              Have a link?
             </button>
             <button
               type="button"
               onClick={onOpenCreateModal}
-              className="px-4 py-2 rounded-xl btn-primary-gradient text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-500/20 cursor-pointer"
+              className="btn-pill-black px-5 sm:px-6 py-2.5 text-xs sm:text-sm font-semibold cursor-pointer shadow-xs"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Create Chat</span>
+              Enter Workspace
             </button>
           </div>
         ) : currentView === 'chat' ? (
@@ -121,20 +173,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               type="button"
               onClick={onOpenShareModal}
-              className="px-3.5 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white text-xs font-medium flex items-center gap-1.5 border border-white/10 transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg btn-outline text-xs font-medium flex items-center gap-1.5 cursor-pointer"
             >
-              <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+              <Share2 className="w-3.5 h-3.5 text-zinc-600" />
               <span className="hidden sm:inline">Share Link</span>
             </button>
 
-            {/* Prominent Destroy Chat Button */}
+            {/* Accessible Destroy Chat Button */}
             <button
               type="button"
               onClick={onOpenRevokeConfirm}
-              className="px-3.5 py-2 rounded-xl btn-danger-gradient text-rose-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+              className="px-3.5 py-1.5 rounded-lg btn-danger text-xs font-medium flex items-center gap-1.5 cursor-pointer"
               title="Permanently destroy conversation and delete messages"
             >
-              <Trash2 className="w-3.5 h-3.5 text-rose-400 group-hover:text-white" />
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
               <span>Destroy Chat</span>
             </button>
           </div>
