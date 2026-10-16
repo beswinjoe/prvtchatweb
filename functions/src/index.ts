@@ -7,6 +7,24 @@ admin.initializeApp();
 const db = admin.firestore();
 
 /**
+ * The Admin SDK bypasses Firestore rules, so never trust a caller-selected namespace.
+ * APP_ID is a server-side deployment setting; callers may omit appId but cannot override it.
+ */
+function resolveAppId(requestedAppId: unknown): string {
+  const configuredAppId = process.env.APP_ID || 'prvtchat-ephemeral-e2ee';
+  if (requestedAppId !== undefined && requestedAppId !== null && requestedAppId !== configuredAppId) {
+    throw new HttpsError('invalid-argument', 'Unsupported appId.');
+  }
+  return configuredAppId;
+}
+
+function validateRoomSlug(roomSlug: unknown): asserts roomSlug is string {
+  if (typeof roomSlug !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(roomSlug)) {
+    throw new HttpsError('invalid-argument', 'Valid roomSlug parameter is required.');
+  }
+}
+
+/**
  * Scheduled Cloud Function that runs every 15 minutes to shred expired or revoked rooms.
  * Protects database privacy even if all clients disconnect or go offline.
  */
@@ -87,11 +105,9 @@ export const cleanupRoom = onCall(
       throw new HttpsError('unauthenticated', 'User must be authenticated to request room shredding.');
     }
 
-    const { appId = 'prvtchat-ephemeral-e2ee', roomSlug } = request.data || {};
-
-    if (!roomSlug || typeof roomSlug !== 'string') {
-      throw new HttpsError('invalid-argument', 'Valid roomSlug parameter is required.');
-    }
+    const { roomSlug } = request.data || {};
+    const appId = resolveAppId(request.data?.appId);
+    validateRoomSlug(roomSlug);
 
     const roomRef = db
       .collection('artifacts')
@@ -143,10 +159,9 @@ export const joinRoom = onCall(
       throw new HttpsError('unauthenticated', 'User must be authenticated to join room.');
     }
 
-    const { appId = 'prvtchat-ephemeral-e2ee', roomSlug, displayName = 'Participant' } = request.data || {};
-    if (!roomSlug || typeof roomSlug !== 'string') {
-      throw new HttpsError('invalid-argument', 'Valid roomSlug parameter is required.');
-    }
+    const { roomSlug, displayName = 'Participant' } = request.data || {};
+    const appId = resolveAppId(request.data?.appId);
+    validateRoomSlug(roomSlug);
 
     const callerUid = request.auth.uid;
     const roomRef = db
@@ -242,10 +257,9 @@ export const leaveRoom = onCall(
       throw new HttpsError('unauthenticated', 'User must be authenticated to leave room.');
     }
 
-    const { appId = 'prvtchat-ephemeral-e2ee', roomSlug } = request.data || {};
-    if (!roomSlug || typeof roomSlug !== 'string') {
-      throw new HttpsError('invalid-argument', 'Valid roomSlug parameter is required.');
-    }
+    const { roomSlug } = request.data || {};
+    const appId = resolveAppId(request.data?.appId);
+    validateRoomSlug(roomSlug);
 
     const callerUid = request.auth.uid;
     const roomRef = db
@@ -301,9 +315,11 @@ export const transferOwnership = onCall(
       throw new HttpsError('unauthenticated', 'User must be authenticated to transfer ownership.');
     }
 
-    const { appId = 'prvtchat-ephemeral-e2ee', roomSlug, newOwnerUid } = request.data || {};
-    if (!roomSlug || typeof roomSlug !== 'string' || !newOwnerUid || typeof newOwnerUid !== 'string') {
-      throw new HttpsError('invalid-argument', 'Valid roomSlug and newOwnerUid are required.');
+    const { roomSlug, newOwnerUid } = request.data || {};
+    const appId = resolveAppId(request.data?.appId);
+    validateRoomSlug(roomSlug);
+    if (typeof newOwnerUid !== 'string' || !/^[^/]{1,128}$/.test(newOwnerUid)) {
+      throw new HttpsError('invalid-argument', 'Valid newOwnerUid is required.');
     }
 
     const callerUid = request.auth.uid;
