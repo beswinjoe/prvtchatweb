@@ -103,13 +103,23 @@ function resolveFirebaseConfig(): Record<string, unknown> | null {
       apiKey: env.VITE_FIREBASE_API_KEY,
       authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || `${env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
       projectId: env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || `${env.VITE_FIREBASE_PROJECT_ID}.appspot.com`,
+      storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || `${env.VITE_FIREBASE_PROJECT_ID}.firebasestorage.app`,
       messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
       appId: env.VITE_FIREBASE_APP_ID || '',
+      measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || '',
     };
   }
 
-  return null;
+  // 3. Default production configuration for PRVTCHAT (prvtchat-30cc5)
+  return {
+    apiKey: 'AIzaSyCxshINfB6Hvn-tBiKOow0JpHO1nYPVp7Y',
+    authDomain: 'prvtchat-30cc5.firebaseapp.com',
+    projectId: 'prvtchat-30cc5',
+    storageBucket: 'prvtchat-30cc5.firebasestorage.app',
+    messagingSenderId: '982088677664',
+    appId: '1:982088677664:web:e142494d5d7b8022ea7f45',
+    measurementId: 'G-2VVRFMR5EH',
+  };
 }
 
 const resolvedConfig = resolveFirebaseConfig();
@@ -123,6 +133,19 @@ if (resolvedConfig) {
     realAppInstance = initializeApp(resolvedConfig);
     realAuthInstance = realAuth.getAuth(realAppInstance);
     realDbInstance = realFirestore.getFirestore(realAppInstance);
+
+    // Initialize Analytics safely if running in browser environment
+    if (typeof window !== 'undefined' && resolvedConfig.measurementId) {
+      import('firebase/analytics')
+        .then(({ getAnalytics, isSupported }) => {
+          isSupported().then((supported) => {
+            if (supported && realAppInstance) {
+              getAnalytics(realAppInstance);
+            }
+          }).catch(() => {});
+        })
+        .catch(() => {});
+    }
   } catch (err) {
     console.warn('Real Firebase initialization failed:', err);
     realAppInstance = null;
