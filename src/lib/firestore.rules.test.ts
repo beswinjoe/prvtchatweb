@@ -136,6 +136,7 @@ describe('Firestore Security Rules Suite', () => {
       createdAt: now,
       expiresAt: now + 3600000,
       creatorUid: 'alice_uid',
+      allowPeerRevoke: true,
       keyCommitment: 'commitment_hash_abc123',
     });
 
@@ -144,6 +145,27 @@ describe('Firestore Security Rules Suite', () => {
 
     await assertSucceeds(
       updateDoc(bobRoomRef, {
+        status: 'revoked',
+        revokedBy: 'bob_uid',
+      }),
+    );
+
+    // Create room with allowPeerRevoke: false
+    const lockedRoomRef = doc(adminDb, 'artifacts', appId, 'public', 'data', 'rooms', 'creator-only-room');
+    await setDoc(lockedRoomRef, {
+      slug: 'creator-only-room',
+      status: 'active',
+      createdAt: now,
+      expiresAt: now + 3600000,
+      creatorUid: 'alice_uid',
+      allowPeerRevoke: false,
+      keyCommitment: 'commitment_hash_abc123',
+    });
+
+    const bobLockedRoomRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'creator-only-room');
+    // Bob cannot revoke creator-only room
+    await assertFails(
+      updateDoc(bobLockedRoomRef, {
         status: 'revoked',
         revokedBy: 'bob_uid',
       }),
@@ -250,10 +272,19 @@ describe('Firestore Security Rules Suite', () => {
     const bobDb = getEnv().authenticatedContext('bob_uid').firestore();
     const bobMsgRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'messages', 'msg-original');
 
-    // Bob toggles reaction -> succeeds
+    // Bob toggles plain reaction -> succeeds
     await assertSucceeds(
       updateDoc(bobMsgRef, {
         reactions: { '👍': ['bob_uid'] },
+      }),
+    );
+
+    // Bob toggles encrypted reaction -> succeeds
+    await assertSucceeds(
+      updateDoc(bobMsgRef, {
+        reactionsIv: '1234567890123456',
+        reactionsCiphertext: 'EncryptedPayloadBase64==',
+        reactionsUpdatedAt: now + 500,
       }),
     );
 

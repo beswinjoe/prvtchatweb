@@ -70,6 +70,7 @@ service cloud.firestore {
                     && resource.data.status == 'active'
                     && isNotExpired(resource.data)
                     && (request.resource.data.status == 'revoked' || request.resource.data.status == 'expired')
+                    && (resource.data.creatorUid == request.auth.uid || resource.data.allowPeerRevoke == true)
                     && request.resource.data.revokedBy == request.auth.uid
                     && request.resource.data.creatorUid == resource.data.creatorUid
                     && request.resource.data.createdAt == resource.data.createdAt
@@ -107,8 +108,8 @@ service cloud.firestore {
                         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy'])
                          && (resource.data.senderUid == request.auth.uid || isRoomCreator(appId, roomSlug)))
                         ||
-                        // Reaction toggling only
-                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+                        // Reaction toggling only (encrypted or plain)
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'reactionsIv', 'reactionsCiphertext', 'reactionsUpdatedAt'])
                       )
                       && request.resource.data.ciphertext == resource.data.ciphertext
                       && request.resource.data.iv == resource.data.iv
@@ -168,7 +169,7 @@ service cloud.firestore {
                       (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy'])
                        && (resource.data.senderUid == request.auth.uid || isRoomCreator(appId, resource.data.roomSlug)))
                       ||
-                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'reactionsIv', 'reactionsCiphertext', 'reactionsUpdatedAt'])
                     )
                     && request.resource.data.ciphertext == resource.data.ciphertext
                     && request.resource.data.iv == resource.data.iv

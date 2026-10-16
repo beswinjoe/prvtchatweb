@@ -42,15 +42,22 @@ npm test
 ```
 Executes comprehensive unit tests verifying AES-256-GCM encryption/decryption, tamper resistance, foreign key rejection, SHA-256 commitments, image magic byte validation, collision-resistant slug generation, and 7-day expiration calculations.
 
-### 3. Start Development Server
+### 3. Start RAM-Only Relay Server (No Database / Zero Disk Writes)
+```bash
+npm run relay
+```
+Launches the standalone volatile-memory relay on `http://localhost:4040` (WebSocket + HTTP).
+- Stores rooms, encrypted packets, and presence in **server RAM only**.
+- Zero disk writes, zero database, zero log persistence of message payloads.
+- Bounded ring buffers (max 50 messages/room, 1MB max payload) and active 5-second memory sweep.
+
+### 4. Start Development Web Client
 ```bash
 npm run dev
 ```
 Open [http://localhost:5174/](http://localhost:5174/) in your browser.
 
-In development, if live Firebase credentials are not provided in `.env`, PRVTCHAT automatically uses an in-memory cross-tab [`BroadcastChannel`](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel) relay for instant offline multi-tab testing.
-
-### 4. Build for Production
+### 5. Build for Production
 ```bash
 npm run build
 ```
@@ -61,7 +68,11 @@ npm run build
 
 ```text
 prvtchatweb/
-├── firestore.rules              # Restrictive Firestore security rules
+├── server/                      # RAM-Only Zero-Persistence Network Relay
+│   ├── index.ts                 # CLI entrypoint for standalone relay (npm run relay)
+│   ├── relay.ts                 # In-memory WebSocket/HTTP room relay & shredder
+│   └── relay.test.ts            # Unit tests for RAM-only relay quotas & eviction
+├── firestore.rules              # Restrictive Firestore security rules (Firebase mode)
 ├── firestore.indexes.json       # Composite query index definitions
 ├── firebase.json                # Firebase hosting, rules, and emulators config
 ├── functions/                   # Backend Cloud Functions (Node.js 20 + TypeScript)
@@ -70,22 +81,25 @@ prvtchatweb/
 │   └── package.json
 ├── docs/
 │   ├── SECURITY_AUDIT.md        # Complete vulnerability register & threat model
-│   └── DEPLOYMENT.md            # Production deployment instructions
+│   └── DEPLOYMENT.md            # Production deployment instructions (Relay & Firebase)
 ├── src/
 │   ├── types/index.ts           # Central TypeScript definitions
 │   ├── lib/
 │   │   ├── crypto.ts            # Web Crypto AES-256-GCM + SHA-256 layer
-│   │   ├── crypto.test.ts       # Cryptographic unit tests
+│   │   ├── crypto.test.ts       # Cryptographic unit tests (tamper, cross-device)
 │   │   ├── expiry.ts            # Authoritative 7-day clamping & time formatting
 │   │   ├── expiry.test.ts       # Expiration logic tests
 │   │   ├── firebase.ts          # Centralized Firebase initialization & adapters
+│   │   ├── firestore.rules.test.ts # Emulator security rules test suite
+│   │   ├── relayClient.ts       # WebSocket client adapter for RAM-only relay
+│   │   ├── relayClient.test.ts  # Integration test for relay client and server
 │   │   ├── image.ts             # Magic bytes validation & canvas compression
 │   │   ├── image.test.ts        # Image MIME & security tests
 │   │   ├── utils.ts             # Secure slug generation & helpers
 │   │   └── utils.test.ts        # Slug generation & utility tests
 │   ├── components/
 │   │   ├── Navbar.tsx           # Seamless header with countdown & Destroy action
-│   │   ├── LandingView.tsx      # Calm sky-blue hero landing page
+│   │   ├── LandingView.tsx      # Calm sky-blue hero landing page (Untouched)
 │   │   ├── ChatView.tsx         # Encrypted messaging stream & attachments
 │   │   ├── ExpiredView.tsx      # Post-destruction tombstone screen
 │   │   ├── ErrorBoundary.tsx    # Sanitized React error boundary

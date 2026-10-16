@@ -6,20 +6,52 @@ This guide details the complete procedure for deploying PRVTCHAT to production, 
 
 ## 1. Architecture Overview
 
-PRVTCHAT uses a two-tier architecture:
-1. **Frontend Client (Vite + React 19 + TypeScript):**
-   - Pure client-side Web Crypto AES-256-GCM encryption/decryption.
-   - Zero-knowledge URL fragment key distribution (`#key=...`).
-   - Connects to Firebase Cloud Firestore for real-time encrypted document delivery.
-   - Connects to Firebase Anonymous Authentication for ephemeral user sessions.
-2. **Backend Services (Firebase Cloud Functions v2):**
-   - Scheduled Cloud Scheduler job (`scheduledRoomCleanup`) executing every 15 minutes.
-   - Permanently shreds expired and revoked rooms, messages, attachments, and presence records.
-   - Callable endpoint (`cleanupRoom`) for immediate server-side cascading deletion upon manual room destruction.
+PRVTCHAT supports two production architectures:
+1. **Option A: RAM-Only Network Relay (Recommended — No Database / Zero Disk Writes)**
+   - Standalone volatile-memory Node.js WebSocket relay (`server/relay.ts`).
+   - Zero database (no Firebase, no Supabase, no external DB, zero disk writes).
+   - Instant active memory purge upon room expiry or creator revocation.
+2. **Option B: Firebase Serverless (For 100% Static Frontend CDN Hosting)**
+   - Client connects directly to Firebase Cloud Firestore for real-time document delivery.
+   - Cloud Functions background scheduler (`scheduledRoomCleanup`) shreds expired rooms.
 
 ---
 
-## 2. Firebase Project Setup
+## 2. Option A: RAM-Only Network Relay Deployment
+
+### Overview & Guarantees
+- **Zero Persistent Storage:** Active rooms, encrypted packets, and presence records exist exclusively in heap memory (`Map<string, RelayRoom>`).
+- **Zero Key Knowledge:** Decryption keys remain exclusively in client URL fragments (`#key=...`) and are never transmitted to the relay. The server only routes ciphertext and IVs.
+- **Resource Quotas:**
+  - Maximum 500 concurrent rooms in RAM.
+  - Maximum 50 messages per room (ring buffer; oldest evicted).
+  - Maximum 1MB per message or image attachment ciphertext.
+  - Maximum 50 connections per room.
+  - Per-connection rate limit: 15 messages/second.
+- **Active Memory Sweep:** A 5-second interval actively zeroes and deletes expired and revoked rooms from RAM.
+
+### Server Startup Commands
+```bash
+# Start relay server (default port 4040)
+PORT=4040 npm run relay
+```
+
+### Hosting Options & Costs
+| Platform | Tier | Monthly Cost | Startup Command |
+|---|---|---|---|
+| **Railway** | Starter / Hobby | $0 - $5 / mo | `npm run relay` |
+| **Render** | Free / Starter | $0 - $7 / mo | `node server/index.ts` |
+| **Fly.io** | Shared CPU 256MB | $0 (Free Tier) | `fly launch` |
+| **VPS (Ubuntu)** | 1 CPU 1GB RAM | $3.50 - $5 / mo | `pm2 start server/index.ts --name prvtchat-relay` |
+
+### Critical Disclosures & Trade-offs
+1. **Server Restart Implications:** Because all state is stored purely in volatile RAM, restarting, crashing, or redeploying the server process destroys all active conversations immediately.
+2. **Memory Inspection:** While the server process is alive, root administrators or malicious host operators with memory dump access could technically inspect RAM. However, all message payloads and images are AES-256-GCM encrypted on the client before reaching the server, so ciphertexts cannot be read without the client's URL fragment key.
+3. **No Absolute Privacy Claims:** RAM-only storage does not prevent screen capture (analog hole) or malware on participant devices.
+
+---
+
+## 3. Option B: Firebase Serverless Setup
 
 ### Step 2.1: Create Firebase Project
 1. Navigate to the [Firebase Console](https://console.firebase.google.com/).

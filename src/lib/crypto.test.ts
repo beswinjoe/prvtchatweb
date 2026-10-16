@@ -124,6 +124,35 @@ describe('Web Crypto E2EE Primitives', () => {
     await expect(importRoomKey(shortKey)).rejects.toThrow(/Invalid key length/);
   });
 
+  it('simulates cross-device key sharing and bidirectional encryption/decryption', async () => {
+    // Device A creates room and generates raw keyString in URL hash
+    const { keyString: sharedHashKey, cryptoKey: deviceAKey } = await generateRoomKey();
+
+    // Device B receives URL hash #key=... and imports as non-extractable CryptoKey
+    const deviceBKey = await importRoomKey(sharedHashKey, false);
+    expect(deviceBKey.extractable).toBe(false);
+
+    // Device A encrypts message for Device B
+    const packetFromA = await encryptPayload(deviceAKey, { text: 'Hello from Device A', sender: 'Alice' });
+    const decryptedByB = await decryptPayload<{ text: string; sender: string }>(
+      deviceBKey,
+      packetFromA.iv,
+      packetFromA.ciphertext,
+    );
+    expect(decryptedByB.text).toBe('Hello from Device A');
+    expect(decryptedByB.sender).toBe('Alice');
+
+    // Device B replies, encrypted with non-extractable key
+    const packetFromB = await encryptPayload(deviceBKey, { text: 'Acknowledged by Device B', sender: 'Bob' });
+    const decryptedByA = await decryptPayload<{ text: string; sender: string }>(
+      deviceAKey,
+      packetFromB.iv,
+      packetFromB.ciphertext,
+    );
+    expect(decryptedByA.text).toBe('Acknowledged by Device B');
+    expect(decryptedByA.sender).toBe('Bob');
+  });
+
   it('computes consistent zero-knowledge SHA-256 key commitments', async () => {
     const { cryptoKey } = await generateRoomKey();
     const meta1 = await computeKeyMetadata(cryptoKey);

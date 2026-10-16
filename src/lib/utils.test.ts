@@ -43,11 +43,11 @@ describe('Utility and Slug Functions', () => {
   });
 
   it('formats remaining time accurately', () => {
-    const now = Date.now();
-    expect(formatTimeRemaining(null)).toBe('Burn on revoke');
-    expect(formatTimeRemaining(now - 1000)).toBe('Expired');
-    expect(formatTimeRemaining(now + 45000)).toMatch(/\d+s left/);
-    expect(formatTimeRemaining(now + 3600000)).toMatch(/1h 0m left/);
+    const now = 1700000000000;
+    expect(formatTimeRemaining(null, now)).toBe('Burn on revoke');
+    expect(formatTimeRemaining(now - 1000, now)).toBe('Expired');
+    expect(formatTimeRemaining(now + 45000, now)).toBe('45s left');
+    expect(formatTimeRemaining(now + 3600000, now)).toBe('1h 0m left');
   });
 
   it('formats millisecond timestamps into readable time', () => {

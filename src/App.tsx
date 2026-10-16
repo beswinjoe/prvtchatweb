@@ -208,14 +208,17 @@ export default function App() {
   const purgeAndExpireRoom = useCallback(
     async (slugToPurge: string, targetStatus: 'revoked' | 'expired' = 'revoked') => {
       if (!slugToPurge) return;
+      let accessRevoked = false;
+
       try {
-        // 1. Mark room document as revoked/expired immediately
+        // 1. Immediately revoke room access so no new messages can attach
         const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', slugToPurge);
         await updateDoc(roomRef, {
           status: targetStatus,
           revokedAt: Date.now(),
           revokedBy: user ? user.uid : 'system',
         });
+        accessRevoked = true;
 
         // 2. Permanently delete all stored message records for this room
         const messagesCol = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
@@ -238,13 +241,13 @@ export default function App() {
       } catch (err) {
         console.error('Purge error:', err);
       } finally {
-        // Clear active conversation keys from memory
+        // Clear active conversation keys from memory immediately
         setActiveCryptoKey(null);
         setActiveKeyString('');
         setDecryptedMessages([]);
         setEncryptedMessages([]);
         setShowRevokeConfirm(false);
-        setExpiredReason(targetStatus);
+        setExpiredReason(accessRevoked ? targetStatus : 'not_found');
         setCurrentView('expired');
 
         // Remove secret from URL hash fragment
@@ -1030,6 +1033,11 @@ export default function App() {
   }, [activePeers, user]);
 
   const leaveConversationView = () => {
+    if (activeSlug && user) {
+      const presenceDocId = `${activeSlug}_${user.uid}`;
+      const presenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', presenceDocId);
+      deleteDoc(presenceRef).catch(() => {});
+    }
     setCurrentView('landing');
     setActiveSlug('');
     setActiveKeyString('');

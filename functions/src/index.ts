@@ -18,32 +18,40 @@ export const scheduledRoomCleanup = onSchedule(
   },
   async () => {
     const now = Date.now();
-    const defaultAppId = 'prvtchat-ephemeral-e2ee';
+    const targetAppId = process.env.APP_ID || 'prvtchat-ephemeral-e2ee';
 
-    console.log(`[scheduledRoomCleanup] Starting room shredding sweep at ${new Date(now).toISOString()}`);
+    console.log(`[scheduledRoomCleanup] Starting room shredding sweep at ${new Date(now).toISOString()} for appId: ${targetAppId}`);
 
     const roomsCol = db
       .collection('artifacts')
-      .doc(defaultAppId)
+      .doc(targetAppId)
       .collection('public')
       .doc('data')
       .collection('rooms');
 
-    // Sweep 1: Expired rooms
+    // Sweep 1: Expired rooms (ordered by expiration date)
     const expiredSnap = await roomsCol
       .where('expiresAt', '<=', now)
-      .limit(50)
+      .orderBy('expiresAt', 'asc')
+      .limit(100)
       .get();
 
     // Sweep 2: Revoked rooms
     const revokedSnap = await roomsCol
       .where('status', '==', 'revoked')
+      .limit(100)
+      .get();
+
+    // Sweep 3: Stalled shredding rooms
+    const stalledSnap = await roomsCol
+      .where('status', '==', 'shredding')
       .limit(50)
       .get();
 
     const slugsToClean = new Set<string>();
     expiredSnap.docs.forEach((doc) => slugsToClean.add(doc.id));
     revokedSnap.docs.forEach((doc) => slugsToClean.add(doc.id));
+    stalledSnap.docs.forEach((doc) => slugsToClean.add(doc.id));
 
     console.log(`[scheduledRoomCleanup] Found ${slugsToClean.size} rooms marked for permanent shredding.`);
 
@@ -51,7 +59,7 @@ export const scheduledRoomCleanup = onSchedule(
     let totalPresenceShredded = 0;
 
     for (const slug of slugsToClean) {
-      const res = await shredRoom(db, defaultAppId, slug);
+      const res = await shredRoom(db, targetAppId, slug);
       if (res.success) {
         totalMessagesShredded += res.messagesDeleted;
         totalPresenceShredded += res.presenceDeleted;
