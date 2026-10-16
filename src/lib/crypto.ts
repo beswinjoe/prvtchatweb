@@ -74,12 +74,13 @@ export async function generateRoomKey(): Promise<{
 
 /**
  * Imports a URL-safe Base64 key string into a Web Crypto AES-GCM CryptoKey.
+ * Defaults to non-extractable (extractable: false) to prevent memory key exfiltration.
  * @param keyString 32-byte Base64-encoded key
- * @param extractable Whether key can be exported again (defaults to true for metadata, false for strict session isolation)
+ * @param extractable Whether key can be exported again (defaults to false for security)
  */
 export async function importRoomKey(
   keyString: string,
-  extractable = true,
+  extractable = false,
 ): Promise<CryptoKey> {
   if (!keyString || typeof keyString !== 'string') {
     throw new Error('Invalid or missing 256-bit encryption key.');
@@ -111,11 +112,20 @@ export async function importRoomKey(
  * the URL #key matches the room without exposing the key.
  */
 export async function computeKeyMetadata(
-  cryptoKey: CryptoKey,
+  keyInput: CryptoKey | string | Uint8Array,
 ): Promise<KeyMetadata> {
   const crypto = getCrypto();
-  const rawKey = await crypto.subtle.exportKey('raw', cryptoKey);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', rawKey);
+  let rawBytes: Uint8Array;
+  if (typeof keyInput === 'string') {
+    rawBytes = base64UrlToBuffer(keyInput);
+  } else if (keyInput instanceof Uint8Array) {
+    rawBytes = keyInput;
+  } else {
+    // CryptoKey
+    const rawBuffer = await crypto.subtle.exportKey('raw', keyInput);
+    rawBytes = new Uint8Array(rawBuffer);
+  }
+  const hashBuffer = await crypto.subtle.digest('SHA-256', rawBytes as BufferSource);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hex = hashArray
     .map((b) => b.toString(16).padStart(2, '0'))

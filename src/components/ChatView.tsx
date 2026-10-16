@@ -5,6 +5,7 @@ import {
   CornerDownRight,
   Image as ImageIcon,
   Lock,
+  LogOut,
   Maximize2,
   Reply,
   Send,
@@ -24,6 +25,7 @@ import type {
   ImageAttachment,
   KeyMetadata,
   RoomData,
+  RoomMember,
 } from '../types';
 
 interface ChatViewProps {
@@ -31,6 +33,9 @@ interface ChatViewProps {
   keyMetadata: KeyMetadata;
   activePeers: ActivePeer[];
   typingPeers: ActivePeer[];
+  roomMembers: RoomMember[];
+  onOpenMembersModal: () => void;
+  onLeaveRoom: () => void;
   isDraggingOver: boolean;
   setIsDraggingOver: (v: boolean) => void;
   handleImageFile: (file: File) => void;
@@ -67,6 +72,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
   activeSlug,
   activePeers,
   typingPeers,
+  roomMembers,
+  onOpenMembersModal,
+  onLeaveRoom,
   isDraggingOver,
   setIsDraggingOver,
   handleImageFile,
@@ -99,6 +107,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   fileInputRef,
 }) => {
   const timeLeft = roomData?.expiresAt ? formatTimeRemaining(roomData.expiresAt, nowTick) : null;
+  const isOwner = Boolean(user && roomData && ((roomData.ownerUid || roomData.creatorUid) === user.uid));
+  const activeCount = roomMembers.length > 0 ? roomMembers.length : (roomData?.memberCount || 1);
 
   return (
     <div
@@ -133,15 +143,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
             </div>
           </div>
 
-          {/* Active Peers Counter */}
-          <div className="hidden sm:flex items-center gap-1.5 text-zinc-500 pl-3 border-l border-zinc-200">
+          {/* Authoritative Member Counter & Manager Button */}
+          <button
+            type="button"
+            onClick={onOpenMembersModal}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:border-zinc-400 hover:bg-zinc-100 text-zinc-800 transition-colors cursor-pointer text-xs font-medium"
+            title="View participants, capacity & roles"
+          >
             <Users className="w-3.5 h-3.5 text-zinc-600" />
-            <span>
-              {activePeers.length > 0
-                ? `${activePeers.length} online`
-                : '1 participant'}
-            </span>
-          </div>
+            <span>{activeCount}/12 members</span>
+            <span className="text-[11px] text-zinc-400 font-normal">({activePeers.length} online)</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -167,15 +179,26 @@ export const ChatView: React.FC<ChatViewProps> = ({
             )}
           </button>
 
-          {/* Accessible Destroy Chat Action */}
-          <button
-            type="button"
-            onClick={onOpenRevokeConfirm}
-            className="p-1.5 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer border border-transparent hover:border-rose-200"
-            title="Destroy this conversation"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {/* Role-governed action: Owner can destroy conversation, Members can leave */}
+          {isOwner ? (
+            <button
+              type="button"
+              onClick={onOpenRevokeConfirm}
+              className="p-1.5 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer border border-transparent hover:border-rose-200"
+              title="Destroy this conversation (Owner only)"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onLeaveRoom}
+              className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-600 hover:bg-zinc-100 transition-colors cursor-pointer border border-transparent hover:border-zinc-200"
+              title="Leave conversation"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 

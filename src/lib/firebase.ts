@@ -5,6 +5,7 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import * as realAuth from 'firebase/auth';
 import * as realFirestore from 'firebase/firestore';
+import * as realFunctions from 'firebase/functions';
 
 // Global declarations for injected variables
 declare global {
@@ -118,12 +119,18 @@ const resolvedConfig = resolveFirebaseConfig();
 let realAppInstance: FirebaseApp | null = null;
 let realAuthInstance: realAuth.Auth | null = null;
 let realDbInstance: realFirestore.Firestore | null = null;
+let realFunctionsInstance: realFunctions.Functions | null = null;
 
 if (resolvedConfig) {
   try {
     realAppInstance = initializeApp(resolvedConfig);
     realAuthInstance = realAuth.getAuth(realAppInstance);
     realDbInstance = realFirestore.getFirestore(realAppInstance);
+    try {
+      realFunctionsInstance = realFunctions.getFunctions(realAppInstance);
+    } catch {
+      realFunctionsInstance = null;
+    }
 
     // Initialize Analytics safely if running in browser environment
     if (typeof window !== 'undefined' && resolvedConfig.measurementId) {
@@ -142,6 +149,7 @@ if (resolvedConfig) {
     realAppInstance = null;
     realAuthInstance = null;
     realDbInstance = null;
+    realFunctionsInstance = null;
   }
 }
 
@@ -163,6 +171,23 @@ export const firebaseConfigError: string | null =
 
 export const auth = realAuthInstance;
 export const db = realDbInstance;
+export const functions = realFunctionsInstance;
+
+export async function callCloudFunction<Req = any, Res = any>(
+  name: string,
+  data: Req,
+): Promise<{ success: boolean; data?: Res; error?: string }> {
+  if (realFunctionsInstance) {
+    try {
+      const fn = realFunctions.httpsCallable<Req, Res>(realFunctionsInstance, name);
+      const res = await fn(data);
+      return { success: true, data: res.data };
+    } catch (err: any) {
+      return { success: false, error: err?.message || String(err) };
+    }
+  }
+  return { success: false, error: 'Cloud Functions not initialized' };
+}
 
 // =============================================================================
 // STANDALONE IN-MEMORY & BROADCAST RELAY (Local Dev & Testing Only)
@@ -277,12 +302,16 @@ const mockUser = getMockUser();
 // UNIFIED FIRESTORE API WRAPPERS
 // =============================================================================
 
+export function createMockDb(): { _isMock: true } {
+  return { _isMock: true };
+}
+
 export function doc(
   _database: unknown,
   ...pathSegments: string[]
 ): DocumentReference {
   const cleanPath = pathSegments.filter(Boolean).join('/');
-  if (realDbInstance) {
+  if (realDbInstance && !(_database as any)?._isMock) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (realFirestore.doc as any)(realDbInstance, cleanPath);
   }
@@ -302,7 +331,7 @@ export function collection(
   ...pathSegments: string[]
 ): CollectionReference {
   const cleanPath = pathSegments.filter(Boolean).join('/');
-  if (realDbInstance) {
+  if (realDbInstance && !(_database as any)?._isMock) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (realFirestore.collection as any)(realDbInstance, cleanPath);
   }
@@ -423,6 +452,98 @@ export async function deleteDoc(
   persistStore();
   notifySubscribers(path);
   channel?.postMessage({ type: 'delete', path });
+}
+
+export interface Transaction {
+  get<T = any>(docRef: DocumentReference): Promise<DocumentSnapshot<T>>;
+  set(docRef: DocumentReference, data: Record<string, any>, options?: { merge?: boolean }): Transaction;
+  update(docRef: DocumentReference, partial: Record<string, any>): Transaction;
+  delete(docRef: DocumentReference): Transaction;
+}
+
+export async function runTransaction<T>(
+  _firestore: any,
+  updateFunction: (transaction: Transaction) => Promise<T>,
+): Promise<T> {
+  if (realDbInstance && !_firestore?._isMock) {
+    return await realFirestore.runTransaction(realDbInstance, async (realTx) => {
+      const txAdapter: Transaction = {
+        async get<DocT = any>(docRef: DocumentReference): Promise<DocumentSnapshot<DocT>> {
+          const snap = await realTx.get(docRef as unknown as realFirestore.DocumentReference);
+          return {
+            id: snap.id,
+            exists: () => snap.exists(),
+            data: () => snap.data() as DocT | undefined,
+          };
+        },
+        set(docRef: DocumentReference, data: Record<string, any>, options?: { merge?: boolean }) {
+          if (options?.merge) {
+            realTx.set(docRef as unknown as realFirestore.DocumentReference, data, { merge: true });
+          } else {
+            realTx.set(docRef as unknown as realFirestore.DocumentReference, data);
+          }
+          return txAdapter;
+        },
+        update(docRef: DocumentReference, partial: Record<string, any>) {
+          realTx.update(docRef as unknown as realFirestore.DocumentReference, partial);
+          return txAdapter;
+        },
+        delete(docRef: DocumentReference) {
+          realTx.delete(docRef as unknown as realFirestore.DocumentReference);
+          return txAdapter;
+        },
+      };
+      return await updateFunction(txAdapter);
+    });
+  }
+
+  // Standalone mock transaction
+  const stagedSets = new Map<string, Record<string, any>>();
+  const stagedDeletes = new Set<string>();
+
+  const mockTx: Transaction = {
+    async get<DocT = any>(docRef: DocumentReference): Promise<DocumentSnapshot<DocT>> {
+      const path = docRef.path || '';
+      const staged = stagedSets.get(path);
+      const data = staged !== undefined ? staged : mockStore.get(path);
+      return {
+        id: docRef.id || '',
+        exists: () => Boolean(data),
+        data: () => (data ? ({ ...data } as DocT) : undefined),
+      };
+    },
+    set(docRef: DocumentReference, data: Record<string, any>, options?: { merge?: boolean }) {
+      const path = docRef.path || '';
+      const existing = options?.merge ? stagedSets.get(path) || mockStore.get(path) || {} : {};
+      stagedSets.set(path, { ...existing, ...data });
+      stagedDeletes.delete(path);
+      return mockTx;
+    },
+    update(docRef: DocumentReference, partial: Record<string, any>) {
+      const path = docRef.path || '';
+      const existing = stagedSets.get(path) || mockStore.get(path) || {};
+      stagedSets.set(path, { ...existing, ...partial });
+      return mockTx;
+    },
+    delete(docRef: DocumentReference) {
+      const path = docRef.path || '';
+      stagedDeletes.add(path);
+      stagedSets.delete(path);
+      return mockTx;
+    },
+  };
+
+  const res = await updateFunction(mockTx);
+  for (const [p, d] of stagedSets.entries()) {
+    mockStore.set(p, d);
+    notifySubscribers(p);
+  }
+  for (const p of stagedDeletes) {
+    mockStore.delete(p);
+    notifySubscribers(p);
+  }
+  persistStore();
+  return res;
 }
 
 export async function addDoc(

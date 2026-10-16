@@ -31,9 +31,22 @@ service cloud.firestore {
       return r != null && isRoomActive(r.data);
     }
 
-    function isRoomCreator(appId, roomSlug) {
+    function isRoomOwner(appId, roomSlug) {
       let r = getRoom(appId, roomSlug);
-      return r != null && r.data.creatorUid == request.auth.uid;
+      return r != null && (
+        (r.data.ownerUid != null && r.data.ownerUid == request.auth.uid) ||
+        (r.data.ownerUid == null && r.data.creatorUid == request.auth.uid)
+      );
+    }
+
+    function isRoomMember(appId, roomSlug) {
+      let r = getRoom(appId, roomSlug);
+      let isOwner = r != null && (
+        (r.data.ownerUid != null && r.data.ownerUid == request.auth.uid) ||
+        (r.data.ownerUid == null && r.data.creatorUid == request.auth.uid)
+      );
+      let memberDocPath = /databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)/members/$(request.auth.uid);
+      return isOwner || (exists(memberDocPath) && get(memberDocPath).data.status == 'active');
     }
 
     function isValidLifetime(roomData) {
@@ -52,45 +65,100 @@ service cloud.firestore {
       // Read allowed only if authenticated and room is currently active & unexpired
       allow read: if isAuthenticated() && isRoomActive(resource.data);
 
-      // Create allowed only with active status, valid 7-day bounds, and authenticated creator
+      // Create allowed only with active status, valid 7-day bounds, authenticated owner, and max 12 members bound
       allow create: if isAuthenticated()
                     && request.resource.data.status == 'active'
                     && isValidLifetime(request.resource.data)
                     && request.resource.data.createdAt is number
                     && request.resource.data.createdAt <= request.time.toMillis()
                     && request.resource.data.creatorUid == request.auth.uid
+                    && (request.resource.data.ownerUid == null || request.resource.data.ownerUid == request.auth.uid)
                     && request.resource.data.slug == roomSlug
                     && request.resource.data.keyCommitment is string
                     && request.resource.data.keyCommitment.size() > 0
-                    && request.resource.data.keyCommitment.size() <= 128;
+                    && request.resource.data.keyCommitment.size() <= 128
+                    && (request.resource.data.memberCount == null || (request.resource.data.memberCount is number && request.resource.data.memberCount >= 1 && request.resource.data.memberCount <= 12));
 
-      // Update allowed ONLY for revoking or expiring an active room
-      // Cannot alter creator, creation time, keyCommitment, or extend expiration past max bounds
+      // Update allowed ONLY for:
+      // 1. Authoritative owner revoking or expiring an active room
+      // 2. Authoritative owner transferring ownership to an active member
+      // 3. Incrementing/decrementing memberCount within [1, 12] during trusted join/leave
       allow update: if isAuthenticated()
                     && resource.data.status == 'active'
                     && isNotExpired(resource.data)
-                    && (request.resource.data.status == 'revoked' || request.resource.data.status == 'expired')
-                    && (resource.data.creatorUid == request.auth.uid || resource.data.allowPeerRevoke == true)
-                    && request.resource.data.revokedBy == request.auth.uid
-                    && request.resource.data.creatorUid == resource.data.creatorUid
-                    && request.resource.data.createdAt == resource.data.createdAt
-                    && request.resource.data.keyCommitment == resource.data.keyCommitment
-                    && request.resource.data.slug == resource.data.slug;
+                    && (
+                      // Branch 1: Revocation by authoritative owner ONLY (peer revoke removed)
+                      ((request.resource.data.status == 'revoked' || request.resource.data.status == 'expired')
+                       && isRoomOwner(appId, roomSlug)
+                       && request.resource.data.revokedBy == request.auth.uid
+                       && request.resource.data.creatorUid == resource.data.creatorUid
+                       && request.resource.data.createdAt == resource.data.createdAt
+                       && request.resource.data.keyCommitment == resource.data.keyCommitment
+                       && request.resource.data.slug == resource.data.slug)
+                      ||
+                      // Branch 2: Authoritative ownership transfer by current owner to active member
+                      (isRoomOwner(appId, roomSlug)
+                       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerUid', 'ownershipTransferredAt', 'updatedAt'])
+                       && request.resource.data.ownerUid is string
+                       && request.resource.data.ownerUid != resource.data.ownerUid
+                       && request.resource.data.ownerUid != request.auth.uid
+                       && exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)/members/$(request.resource.data.ownerUid)))
+                      ||
+                      // Branch 3: Capacity count update within [1, 12] bounds
+                      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
+                       && request.resource.data.memberCount is number
+                       && request.resource.data.memberCount >= 1
+                       && request.resource.data.memberCount <= 12)
+                    );
 
-      // Delete allowed only by room creator or for expired/revoked rooms
+      // Delete allowed only by room owner or for expired/revoked rooms
       allow delete: if isAuthenticated()
-                    && (resource.data.creatorUid == request.auth.uid
+                    && (isRoomOwner(appId, roomSlug)
                         || resource.data.status == 'revoked'
                         || !isNotExpired(resource.data));
 
       // -----------------------------------------------------------------------
       // SUBCOLLECTIONS (Scoped per room)
       // -----------------------------------------------------------------------
-      match /messages/{messageId} {
+      match /members/{memberUid} {
         allow read: if isAuthenticated() && roomExistsAndActive(appId, roomSlug);
 
         allow create: if isAuthenticated()
                       && roomExistsAndActive(appId, roomSlug)
+                      && request.resource.data.uid == memberUid
+                      && (request.auth.uid == memberUid || isRoomOwner(appId, roomSlug))
+                      && request.resource.data.status == 'active'
+                      && (
+                        (memberUid == request.auth.uid && isRoomOwner(appId, roomSlug) && request.resource.data.role == 'owner')
+                        || (request.resource.data.role == 'member')
+                      )
+                      && request.resource.data.joinedAt is number
+                      && request.resource.data.joinedAt <= request.time.toMillis();
+
+        allow update: if isAuthenticated()
+                      && roomExistsAndActive(appId, roomSlug)
+                      && (
+                        // Self departure
+                        (request.auth.uid == memberUid
+                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'departedAt', 'updatedAt'])
+                         && request.resource.data.status == 'departed')
+                        ||
+                        // Role update during ownership transfer by owner
+                        (isRoomOwner(appId, roomSlug)
+                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
+                         && (request.resource.data.role == 'owner' || request.resource.data.role == 'member'))
+                      );
+
+        allow delete: if isAuthenticated()
+                      && (isRoomOwner(appId, roomSlug) || !roomExistsAndActive(appId, roomSlug));
+      }
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && roomExistsAndActive(appId, roomSlug) && isRoomMember(appId, roomSlug);
+
+        allow create: if isAuthenticated()
+                      && roomExistsAndActive(appId, roomSlug)
+                      && isRoomMember(appId, roomSlug)
                       && request.resource.data.senderUid == request.auth.uid
                       && request.resource.data.ciphertext is string
                       && request.resource.data.ciphertext.size() > 0
@@ -103,10 +171,11 @@ service cloud.firestore {
 
         allow update: if isAuthenticated()
                       && roomExistsAndActive(appId, roomSlug)
+                      && isRoomMember(appId, roomSlug)
                       && (
-                        // Soft delete by message sender or room creator
+                        // Soft delete by message sender or room owner
                         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy'])
-                         && (resource.data.senderUid == request.auth.uid || isRoomCreator(appId, roomSlug)))
+                         && (resource.data.senderUid == request.auth.uid || isRoomOwner(appId, roomSlug)))
                         ||
                         // Reaction toggling only (encrypted or plain)
                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'reactionsIv', 'reactionsCiphertext', 'reactionsUpdatedAt'])
@@ -118,22 +187,23 @@ service cloud.firestore {
 
         allow delete: if isAuthenticated()
                       && (resource.data.senderUid == request.auth.uid
-                          || isRoomCreator(appId, roomSlug)
+                          || isRoomOwner(appId, roomSlug)
                           || !roomExistsAndActive(appId, roomSlug));
       }
 
       match /presence/{presenceId} {
-        allow read: if isAuthenticated() && roomExistsAndActive(appId, roomSlug);
+        allow read: if isAuthenticated() && roomExistsAndActive(appId, roomSlug) && isRoomMember(appId, roomSlug);
 
         allow write: if isAuthenticated()
                      && roomExistsAndActive(appId, roomSlug)
+                     && isRoomMember(appId, roomSlug)
                      && request.resource.data.uid == request.auth.uid
                      && request.resource.data.lastSeen is number
                      && request.resource.data.lastSeen <= request.time.toMillis();
 
         allow delete: if isAuthenticated()
                       && (resource.data.uid == request.auth.uid
-                          || isRoomCreator(appId, roomSlug)
+                          || isRoomOwner(appId, roomSlug)
                           || !roomExistsAndActive(appId, roomSlug));
       }
     }
@@ -142,15 +212,15 @@ service cloud.firestore {
     // ROOT MESSAGES COLLECTION: /artifacts/{appId}/public/data/messages/{messageId}
     // =========================================================================
     match /artifacts/{appId}/public/data/messages/{messageId} {
-      // Read allowed only if authenticated and associated room is active
       allow read: if isAuthenticated()
                   && resource.data.roomSlug is string
-                  && roomExistsAndActive(appId, resource.data.roomSlug);
+                  && roomExistsAndActive(appId, resource.data.roomSlug)
+                  && isRoomMember(appId, resource.data.roomSlug);
 
-      // Create allowed only if authenticated, room is active, sender matches auth, and payload is bounded
       allow create: if isAuthenticated()
                     && request.resource.data.roomSlug is string
                     && roomExistsAndActive(appId, request.resource.data.roomSlug)
+                    && isRoomMember(appId, request.resource.data.roomSlug)
                     && request.resource.data.senderUid == request.auth.uid
                     && request.resource.data.ciphertext is string
                     && request.resource.data.ciphertext.size() > 0
@@ -161,13 +231,12 @@ service cloud.firestore {
                     && request.resource.data.createdAt is number
                     && request.resource.data.createdAt <= request.time.toMillis();
 
-      // Update allowed ONLY for soft deletion by sender or reaction toggling
-      // Message ciphertext, IV, senderUid, createdAt, and roomSlug CANNOT be modified
       allow update: if isAuthenticated()
                     && roomExistsAndActive(appId, resource.data.roomSlug)
+                    && isRoomMember(appId, resource.data.roomSlug)
                     && (
                       (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy'])
-                       && (resource.data.senderUid == request.auth.uid || isRoomCreator(appId, resource.data.roomSlug)))
+                       && (resource.data.senderUid == request.auth.uid || isRoomOwner(appId, resource.data.roomSlug)))
                       ||
                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'reactionsIv', 'reactionsCiphertext', 'reactionsUpdatedAt'])
                     )
@@ -177,10 +246,9 @@ service cloud.firestore {
                     && request.resource.data.createdAt == resource.data.createdAt
                     && request.resource.data.roomSlug == resource.data.roomSlug;
 
-      // Delete allowed only by sender, room creator, or if room is revoked/expired
       allow delete: if isAuthenticated()
                     && (resource.data.senderUid == request.auth.uid
-                        || isRoomCreator(appId, resource.data.roomSlug)
+                        || isRoomOwner(appId, resource.data.roomSlug)
                         || !roomExistsAndActive(appId, resource.data.roomSlug));
     }
 
@@ -190,18 +258,20 @@ service cloud.firestore {
     match /artifacts/{appId}/public/data/presence/{presenceId} {
       allow read: if isAuthenticated()
                   && resource.data.roomSlug is string
-                  && roomExistsAndActive(appId, resource.data.roomSlug);
+                  && roomExistsAndActive(appId, resource.data.roomSlug)
+                  && isRoomMember(appId, resource.data.roomSlug);
 
       allow write: if isAuthenticated()
                    && request.resource.data.roomSlug is string
                    && roomExistsAndActive(appId, request.resource.data.roomSlug)
+                   && isRoomMember(appId, request.resource.data.roomSlug)
                    && request.resource.data.uid == request.auth.uid
                    && request.resource.data.lastSeen is number
                    && request.resource.data.lastSeen <= request.time.toMillis();
 
       allow delete: if isAuthenticated()
                     && (resource.data.uid == request.auth.uid
-                        || isRoomCreator(appId, resource.data.roomSlug)
+                        || isRoomOwner(appId, resource.data.roomSlug)
                         || !roomExistsAndActive(appId, resource.data.roomSlug));
     }
   }

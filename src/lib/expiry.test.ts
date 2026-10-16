@@ -71,11 +71,14 @@ describe('Expiration & Revocation Logic', () => {
   it('detects active, expired, and revoked room states accurately', () => {
     const activeRoom: RoomData = {
       slug: 'test-room',
+      ownerUid: 'user-1',
       creatorUid: 'user-1',
       createdAt: baseTime,
       expiresAt: baseTime + 24 * 60 * 60 * 1000,
       ttlLabel: '24 hours',
       status: 'active',
+      memberCount: 1,
+      maxMembers: 12,
       allowPeerRevoke: true,
       keyCommitment: 'commitment-1',
       encryptionCipher: 'AES-256-GCM',

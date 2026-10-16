@@ -4,6 +4,7 @@ export interface CleanupResult {
   roomSlug: string;
   messagesDeleted: number;
   presenceDeleted: number;
+  membersDeleted?: number;
   roomDocumentDeleted: boolean;
   success: boolean;
   error?: string;
@@ -143,7 +144,26 @@ export async function shredRoom(
       }
     }
 
-    // 6. Delete the room document itself
+    // 6. Delete subcollection members documents
+    const subMembersCol = roomRef.collection('members');
+    let moreMembers = true;
+    while (moreMembers) {
+      const snap = await subMembersCol.limit(BATCH_SIZE).get();
+      if (snap.empty) {
+        moreMembers = false;
+        break;
+      }
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      result.membersDeleted = (result.membersDeleted || 0) + snap.size;
+
+      if (snap.size < BATCH_SIZE) {
+        moreMembers = false;
+      }
+    }
+
+    // 7. Delete the room document itself
     await roomRef.delete();
     result.roomDocumentDeleted = true;
     result.success = true;

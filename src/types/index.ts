@@ -26,15 +26,37 @@ export interface ExpirationOption {
   desc: string;
 }
 
+export type RoomRole = 'owner' | 'member';
+
+/** User identity interface */
+export interface User {
+  uid: string;
+  displayName?: string | null;
+  isAnonymous?: boolean;
+}
+
+/** Authoritative membership record stored in rooms/{slug}/members/{uid} */
+export interface RoomMember {
+  uid: string;
+  role: RoomRole;
+  status: 'active' | 'departed';
+  joinedAt: number;
+  updatedAt?: number;
+  displayName?: string;
+}
+
 /** Room document metadata */
 export interface RoomData {
   slug: string;
+  ownerUid: string;
   creatorUid: string;
   createdAt: number;
   expiresAt: number;
   ttlLabel: string;
-  status: 'active' | 'revoked' | 'expired';
-  allowPeerRevoke: boolean;
+  status: 'active' | 'revoked' | 'expired' | 'shredding';
+  memberCount: number;
+  maxMembers: number;
+  allowPeerRevoke?: boolean;
   keyCommitment: string;
   encryptionCipher: 'AES-256-GCM';
   revokedAt?: number;

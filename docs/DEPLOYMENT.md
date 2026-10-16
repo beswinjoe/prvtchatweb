@@ -125,8 +125,11 @@ The Cloud Functions in `functions/` ensure that rooms that expire when participa
    firebase deploy --only functions
    ```
 3. Verify in the Firebase Console under **Build** > **Functions**:
-   - `scheduledRoomCleanup` (Schedule: `every 15 minutes`)
-   - `cleanupRoom` (Callable HTTPS endpoint)
+   - `scheduledRoomCleanup` (Cloud Scheduler: `every 15 minutes`)
+   - `cleanupRoom` (Callable HTTPS: cascades and shreds room, messages, presence, and members subcollections)
+   - `joinRoom` (Callable HTTPS: atomic transaction enforcing 12-member cap)
+   - `leaveRoom` (Callable HTTPS: atomic departure and slot release)
+   - `transferOwnership` (Callable HTTPS: atomic owner transfer to active member)
 
 ---
 
@@ -155,25 +158,39 @@ The Cloud Functions in `functions/` ensure that rooms that expire when participa
 
 ---
 
-## 6. Local Development & Emulator Testing
+## 6. Automated Testing & Verification
 
-PRVTCHAT includes an adaptive dev mode so you can develop and run tests locally without connecting to live Firebase.
+PRVTCHAT provides comprehensive automated tests verifying the client crypto, lifecycle, and Firestore security rules.
 
-### Local Development (Zero-Config Relay)
-Run the Vite development server:
+### 1. Run Unit & Cryptography Tests
 ```bash
-npm run dev
-```
-In development, if no `.env` credentials are provided, PRVTCHAT automatically uses an in-memory BroadcastChannel relay across tabs on `http://localhost:5174/`.
-
-### Local Firebase Emulator Testing
-To run tests against the full local Firebase Emulator Suite:
-```bash
-# 1. Start emulators in background
-npx firebase emulators:start --only firestore
-
-# 2. Run automated test suite
 npm test
+```
+Executes fast, deterministic unit tests for:
+- AES-256-GCM encryption/decryption, non-extractable keys, and SHA-256 commitments
+- Magic byte image validation and canvas compression
+- 7-day hard ceiling calculation and custom expiry parsing
+- Authoritative room manager join, leave, and transfer logic
+- Cryptographically secure slug generation
+
+### 2. Run Firestore Security Rules Tests (Firestore Emulator)
+```bash
+npm run test:rules
+```
+Launches the local Firestore Emulator via `firebase emulators:exec` and verifies:
+- Unauthenticated access denial
+- Spoofed `creatorUid` or `ownerUid` rejection
+- 7-day lifetime bound enforcement
+- Owner-only revocation and rejection of peer revocation
+- Atomic ownership transfer verification
+- Member-only message and reaction authorization
+- Departed member message denial
+- Immutability of ciphertext during reactions
+- Server-side 12-member limit bounds
+
+### 3. Run Entire Test Suite (Unit + Rules)
+```bash
+npm run test:all
 ```
 
 ---

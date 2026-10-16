@@ -107,12 +107,12 @@ export const cleanupRoom = onCall(
     }
 
     const data = roomDoc.data() || {};
-    const isCreator = data.creatorUid === request.auth.uid;
-    const isAlreadyRevoked = data.status === 'revoked' || data.status === 'expired';
+    const isOwner = (data.ownerUid || data.creatorUid) === request.auth.uid;
+    const isAlreadyRevoked = data.status === 'revoked' || data.status === 'expired' || data.status === 'shredding';
     const isExpired = data.expiresAt && Date.now() >= data.expiresAt;
 
-    if (!isCreator && !isAlreadyRevoked && !isExpired) {
-      throw new HttpsError('permission-denied', 'Only room creator can trigger immediate shredding of active rooms.');
+    if (!isOwner && !isAlreadyRevoked && !isExpired) {
+      throw new HttpsError('permission-denied', 'Only room owner can trigger immediate shredding of active rooms.');
     }
 
     const result = await shredRoom(db, appId, roomSlug);
@@ -125,6 +125,258 @@ export const cleanupRoom = onCall(
       roomSlug,
       messagesDeleted: result.messagesDeleted,
       presenceDeleted: result.presenceDeleted,
+      membersDeleted: result.membersDeleted || 0,
     };
+  },
+);
+
+/**
+ * Callable Cloud Function: Atomic, race-safe room joining enforcing the 12-member capacity limit.
+ */
+export const joinRoom = onCall(
+  {
+    enforceAppCheck: false,
+    maxInstances: 20,
+  },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated to join room.');
+    }
+
+    const { appId = 'prvtchat-ephemeral-e2ee', roomSlug, displayName = 'Participant' } = request.data || {};
+    if (!roomSlug || typeof roomSlug !== 'string') {
+      throw new HttpsError('invalid-argument', 'Valid roomSlug parameter is required.');
+    }
+
+    const callerUid = request.auth.uid;
+    const roomRef = db
+      .collection('artifacts')
+      .doc(appId)
+      .collection('public')
+      .doc('data')
+      .collection('rooms')
+      .doc(roomSlug);
+
+    const memberRef = roomRef.collection('members').doc(callerUid);
+
+    return db.runTransaction(async (transaction) => {
+      const roomDoc = await transaction.get(roomRef);
+      if (!roomDoc.exists) {
+        throw new HttpsError('not-found', 'Conversation room does not exist.');
+      }
+
+      const roomData = roomDoc.data() || {};
+      const now = Date.now();
+
+      if (roomData.status !== 'active') {
+        throw new HttpsError('failed-precondition', 'Conversation is no longer active.');
+      }
+
+      if (roomData.expiresAt && now >= roomData.expiresAt) {
+        throw new HttpsError('failed-precondition', 'Conversation has expired.');
+      }
+
+      const memberDoc = await transaction.get(memberRef);
+      const isAlreadyActive = memberDoc.exists && memberDoc.data()?.status === 'active';
+
+      if (isAlreadyActive) {
+        // Idempotent re-join by active participant
+        return {
+          success: true,
+          role: memberDoc.data()?.role || 'member',
+          memberCount: roomData.memberCount || 1,
+          alreadyMember: true,
+        };
+      }
+
+      // Check capacity ceiling: max 12 active participants
+      const currentCount = typeof roomData.memberCount === 'number' ? roomData.memberCount : 1;
+      if (currentCount >= 12) {
+        throw new HttpsError(
+          'resource-exhausted',
+          'Room has reached its maximum capacity of 12 active participants.',
+        );
+      }
+
+      const newMemberCount = currentCount + 1;
+      const callerRole = (roomData.ownerUid || roomData.creatorUid) === callerUid ? 'owner' : 'member';
+
+      transaction.update(roomRef, {
+        memberCount: newMemberCount,
+        updatedAt: now,
+      });
+
+      transaction.set(
+        memberRef,
+        {
+          uid: callerUid,
+          role: callerRole,
+          status: 'active',
+          displayName: String(displayName).slice(0, 32) || 'Participant',
+          joinedAt: memberDoc.exists ? memberDoc.data()?.joinedAt || now : now,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+
+      return {
+        success: true,
+        role: callerRole,
+        memberCount: newMemberCount,
+        alreadyMember: false,
+      };
+    });
+  },
+);
+
+/**
+ * Callable Cloud Function: Atomic departure from a room, safely releasing capacity.
+ */
+export const leaveRoom = onCall(
+  {
+    enforceAppCheck: false,
+    maxInstances: 20,
+  },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated to leave room.');
+    }
+
+    const { appId = 'prvtchat-ephemeral-e2ee', roomSlug } = request.data || {};
+    if (!roomSlug || typeof roomSlug !== 'string') {
+      throw new HttpsError('invalid-argument', 'Valid roomSlug parameter is required.');
+    }
+
+    const callerUid = request.auth.uid;
+    const roomRef = db
+      .collection('artifacts')
+      .doc(appId)
+      .collection('public')
+      .doc('data')
+      .collection('rooms')
+      .doc(roomSlug);
+
+    const memberRef = roomRef.collection('members').doc(callerUid);
+
+    return db.runTransaction(async (transaction) => {
+      const roomDoc = await transaction.get(roomRef);
+      if (!roomDoc.exists) return { success: true };
+
+      const memberDoc = await transaction.get(memberRef);
+      if (!memberDoc.exists || memberDoc.data()?.status !== 'active') {
+        return { success: true };
+      }
+
+      const roomData = roomDoc.data() || {};
+      const currentCount = typeof roomData.memberCount === 'number' ? roomData.memberCount : 1;
+      const newCount = Math.max(1, currentCount - 1);
+      const now = Date.now();
+
+      transaction.update(roomRef, {
+        memberCount: newCount,
+        updatedAt: now,
+      });
+
+      transaction.update(memberRef, {
+        status: 'departed',
+        departedAt: now,
+        updatedAt: now,
+      });
+
+      return { success: true, memberCount: newCount };
+    });
+  },
+);
+
+/**
+ * Callable Cloud Function: Atomic ownership transfer from current owner to an active member.
+ */
+export const transferOwnership = onCall(
+  {
+    enforceAppCheck: false,
+    maxInstances: 10,
+  },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated to transfer ownership.');
+    }
+
+    const { appId = 'prvtchat-ephemeral-e2ee', roomSlug, newOwnerUid } = request.data || {};
+    if (!roomSlug || typeof roomSlug !== 'string' || !newOwnerUid || typeof newOwnerUid !== 'string') {
+      throw new HttpsError('invalid-argument', 'Valid roomSlug and newOwnerUid are required.');
+    }
+
+    const callerUid = request.auth.uid;
+    if (callerUid === newOwnerUid) {
+      throw new HttpsError('invalid-argument', 'Cannot transfer ownership to yourself.');
+    }
+
+    const roomRef = db
+      .collection('artifacts')
+      .doc(appId)
+      .collection('public')
+      .doc('data')
+      .collection('rooms')
+      .doc(roomSlug);
+
+    const oldOwnerMemberRef = roomRef.collection('members').doc(callerUid);
+    const newOwnerMemberRef = roomRef.collection('members').doc(newOwnerUid);
+
+    return db.runTransaction(async (transaction) => {
+      const roomDoc = await transaction.get(roomRef);
+      if (!roomDoc.exists) {
+        throw new HttpsError('not-found', 'Conversation room does not exist.');
+      }
+
+      const roomData = roomDoc.data() || {};
+      const currentOwner = roomData.ownerUid || roomData.creatorUid;
+
+      if (currentOwner !== callerUid) {
+        throw new HttpsError('permission-denied', 'Only the current room owner can transfer ownership.');
+      }
+
+      if (roomData.status !== 'active') {
+        throw new HttpsError('failed-precondition', 'Cannot transfer ownership of an inactive or revoked room.');
+      }
+
+      if (roomData.expiresAt && Date.now() >= roomData.expiresAt) {
+        throw new HttpsError('failed-precondition', 'Cannot transfer ownership of an expired room.');
+      }
+
+      const newOwnerDoc = await transaction.get(newOwnerMemberRef);
+      if (!newOwnerDoc.exists || newOwnerDoc.data()?.status !== 'active') {
+        throw new HttpsError(
+          'failed-precondition',
+          'Target recipient is not an active participant in this room.',
+        );
+      }
+
+      const now = Date.now();
+
+      // 1. Update room authoritative owner
+      transaction.update(roomRef, {
+        ownerUid: newOwnerUid,
+        ownershipTransferredAt: now,
+        updatedAt: now,
+      });
+
+      // 2. Promote recipient to 'owner'
+      transaction.update(newOwnerMemberRef, {
+        role: 'owner',
+        updatedAt: now,
+      });
+
+      // 3. Demote former owner to 'member'
+      transaction.update(oldOwnerMemberRef, {
+        role: 'member',
+        updatedAt: now,
+      });
+
+      return {
+        success: true,
+        previousOwnerUid: callerUid,
+        newOwnerUid,
+      };
+    });
   },
 );

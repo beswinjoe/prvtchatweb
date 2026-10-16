@@ -10,25 +10,20 @@ import {
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 describe('Firestore Security Rules Suite', () => {
-  let testEnv: RulesTestEnvironment | null = null;
+  let testEnv: RulesTestEnvironment;
   const appId = 'prvtchat-ephemeral-e2ee';
   const rulesPath = resolve(process.cwd(), 'firestore.rules');
 
   beforeAll(async () => {
-    try {
-      const rules = readFileSync(rulesPath, 'utf8');
-      testEnv = await initializeTestEnvironment({
-        projectId: 'prvtchat-rules-test',
-        firestore: {
-          rules,
-          host: '127.0.0.1',
-          port: 8080,
-        },
-      });
-    } catch {
-      // If emulator is not running, test will be skipped or report emulator requirement
-      testEnv = null;
-    }
+    const rules = readFileSync(rulesPath, 'utf8');
+    testEnv = await initializeTestEnvironment({
+      projectId: 'prvtchat-rules-test',
+      firestore: {
+        rules,
+        host: '127.0.0.1',
+        port: 8080,
+      },
+    });
   });
 
   afterAll(async () => {
@@ -51,7 +46,6 @@ describe('Firestore Security Rules Suite', () => {
   };
 
   it('blocks unauthenticated reads and writes to rooms', async () => {
-    if (!testEnv) return;
     const unauthDb = getEnv().unauthenticatedContext().firestore();
     const roomRef = doc(unauthDb, 'artifacts', appId, 'public', 'data', 'rooms', 'secret-room-1');
 
@@ -63,13 +57,14 @@ describe('Firestore Security Rules Suite', () => {
         createdAt: Date.now(),
         expiresAt: Date.now() + 3600000,
         creatorUid: 'anon_attacker',
+        ownerUid: 'anon_attacker',
+        memberCount: 1,
         keyCommitment: 'valid_commitment',
       }),
     );
   });
 
   it('allows authenticated users to create valid active rooms within 7-day bound', async () => {
-    if (!testEnv) return;
     const aliceDb = getEnv().authenticatedContext('alice_uid').firestore();
     const roomRef = doc(aliceDb, 'artifacts', appId, 'public', 'data', 'rooms', 'alice-room-1');
     const now = Date.now();
@@ -81,13 +76,14 @@ describe('Firestore Security Rules Suite', () => {
         createdAt: now,
         expiresAt: now + 24 * 3600 * 1000, // 24 hours
         creatorUid: 'alice_uid',
+        ownerUid: 'alice_uid',
+        memberCount: 1,
         keyCommitment: 'commitment_hash_abc123',
       }),
     );
   });
 
   it('rejects room creation exceeding the 7-day hard ceiling', async () => {
-    if (!testEnv) return;
     const aliceDb = getEnv().authenticatedContext('alice_uid').firestore();
     const roomRef = doc(aliceDb, 'artifacts', appId, 'public', 'data', 'rooms', 'long-room');
     const now = Date.now();
@@ -100,100 +96,154 @@ describe('Firestore Security Rules Suite', () => {
         createdAt: now,
         expiresAt: now + 8 * 24 * 3600 * 1000,
         creatorUid: 'alice_uid',
+        ownerUid: 'alice_uid',
+        memberCount: 1,
         keyCommitment: 'commitment_hash_abc123',
       }),
     );
   });
 
-  it('rejects room creation with spoofed creatorUid', async () => {
-    if (!testEnv) return;
+  it('rejects room creation with spoofed creatorUid or ownerUid', async () => {
     const aliceDb = getEnv().authenticatedContext('alice_uid').firestore();
-    const roomRef = doc(aliceDb, 'artifacts', appId, 'public', 'data', 'rooms', 'spoofed-room');
     const now = Date.now();
 
-    // alice tries to claim bob is creator
+    // Alice tries to claim Bob is creator
     await assertFails(
-      setDoc(roomRef, {
-        slug: 'spoofed-room',
+      setDoc(doc(aliceDb, 'artifacts', appId, 'public', 'data', 'rooms', 'spoofed-creator'), {
+        slug: 'spoofed-creator',
         status: 'active',
         createdAt: now,
         expiresAt: now + 3600000,
         creatorUid: 'bob_uid',
+        ownerUid: 'alice_uid',
+        memberCount: 1,
+        keyCommitment: 'commitment_hash_abc123',
+      }),
+    );
+
+    // Alice tries to claim Bob is owner on creation
+    await assertFails(
+      setDoc(doc(aliceDb, 'artifacts', appId, 'public', 'data', 'rooms', 'spoofed-owner'), {
+        slug: 'spoofed-owner',
+        status: 'active',
+        createdAt: now,
+        expiresAt: now + 3600000,
+        creatorUid: 'alice_uid',
+        ownerUid: 'bob_uid',
+        memberCount: 1,
         keyCommitment: 'commitment_hash_abc123',
       }),
     );
   });
 
-  it('allows participants to revoke active rooms', async () => {
-    if (!testEnv) return;
+  it('allows ONLY authoritative owner to revoke room and rejects peer revocation', async () => {
     const adminDb = getEnv().authenticatedContext('alice_uid').firestore();
     const now = Date.now();
-    const roomRef = doc(adminDb, 'artifacts', appId, 'public', 'data', 'rooms', 'revokable-room');
+    const roomRef = doc(adminDb, 'artifacts', appId, 'public', 'data', 'rooms', 'secure-room');
 
     await setDoc(roomRef, {
-      slug: 'revokable-room',
+      slug: 'secure-room',
       status: 'active',
       createdAt: now,
       expiresAt: now + 3600000,
       creatorUid: 'alice_uid',
-      allowPeerRevoke: true,
+      ownerUid: 'alice_uid',
+      memberCount: 1,
+      allowPeerRevoke: true, // Legacy flag must NOT allow Bob to revoke
       keyCommitment: 'commitment_hash_abc123',
     });
 
     const bobDb = getEnv().authenticatedContext('bob_uid').firestore();
-    const bobRoomRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'revokable-room');
+    const bobRoomRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'secure-room');
 
-    await assertSucceeds(
+    // Bob (ordinary participant) tries to revoke -> MUST BE REJECTED
+    await assertFails(
       updateDoc(bobRoomRef, {
         status: 'revoked',
         revokedBy: 'bob_uid',
       }),
     );
 
-    // Create room with allowPeerRevoke: false
-    const lockedRoomRef = doc(adminDb, 'artifacts', appId, 'public', 'data', 'rooms', 'creator-only-room');
-    await setDoc(lockedRoomRef, {
-      slug: 'creator-only-room',
-      status: 'active',
-      createdAt: now,
-      expiresAt: now + 3600000,
-      creatorUid: 'alice_uid',
-      allowPeerRevoke: false,
-      keyCommitment: 'commitment_hash_abc123',
-    });
-
-    const bobLockedRoomRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'creator-only-room');
-    // Bob cannot revoke creator-only room
-    await assertFails(
-      updateDoc(bobLockedRoomRef, {
+    // Alice (authoritative owner) revokes -> SUCCEEDS
+    await assertSucceeds(
+      updateDoc(roomRef, {
         status: 'revoked',
-        revokedBy: 'bob_uid',
+        revokedBy: 'alice_uid',
       }),
     );
   });
 
-  it('enforces message authorization: only active rooms can receive messages', async () => {
-    if (!testEnv) return;
-    const adminDb = getEnv().authenticatedContext('alice_uid').firestore();
+  it('allows owner to transfer ownership to an active member and rejects non-owner transfer', async () => {
     const now = Date.now();
-    const activeRoomRef = doc(adminDb, 'artifacts', appId, 'public', 'data', 'rooms', 'active-chat');
+    const aliceDb = getEnv().authenticatedContext('alice_uid').firestore();
+    const bobDb = getEnv().authenticatedContext('bob_uid').firestore();
 
-    await setDoc(activeRoomRef, {
-      slug: 'active-chat',
+    const roomRef = doc(aliceDb, 'artifacts', appId, 'public', 'data', 'rooms', 'transfer-room');
+    await setDoc(roomRef, {
+      slug: 'transfer-room',
       status: 'active',
       createdAt: now,
       expiresAt: now + 3600000,
       creatorUid: 'alice_uid',
+      ownerUid: 'alice_uid',
+      memberCount: 2,
+      keyCommitment: 'commitment_hash_abc123',
+    });
+
+    // Bob joins as active member in subcollection
+    const bobMemberRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'transfer-room', 'members', 'bob_uid');
+    await assertSucceeds(
+      setDoc(bobMemberRef, {
+        uid: 'bob_uid',
+        role: 'member',
+        status: 'active',
+        joinedAt: now,
+      }),
+    );
+
+    // Non-owner (Bob) attempts to transfer ownership -> FAILS
+    const bobRoomRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'transfer-room');
+    await assertFails(
+      updateDoc(bobRoomRef, {
+        ownerUid: 'bob_uid',
+        ownershipTransferredAt: now,
+        updatedAt: now,
+      }),
+    );
+
+    // Owner (Alice) transfers ownership to active member Bob -> SUCCEEDS
+    await assertSucceeds(
+      updateDoc(roomRef, {
+        ownerUid: 'bob_uid',
+        ownershipTransferredAt: now,
+        updatedAt: now,
+      }),
+    );
+  });
+
+  it('enforces member-only message authorization: non-members cannot send or read messages', async () => {
+    const adminDb = getEnv().authenticatedContext('alice_uid').firestore();
+    const now = Date.now();
+    const activeRoomRef = doc(adminDb, 'artifacts', appId, 'public', 'data', 'rooms', 'member-room');
+
+    await setDoc(activeRoomRef, {
+      slug: 'member-room',
+      status: 'active',
+      createdAt: now,
+      expiresAt: now + 3600000,
+      creatorUid: 'alice_uid',
+      ownerUid: 'alice_uid',
+      memberCount: 1,
       keyCommitment: 'commitment_hash_abc123',
     });
 
     const bobDb = getEnv().authenticatedContext('bob_uid').firestore();
-    const msgRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'messages', 'msg-1');
+    const msgRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'messages', 'msg-bob');
 
-    // Bob sends message with his own UID to active room -> succeeds
-    await assertSucceeds(
+    // Bob is not a member yet -> sending message FAILS
+    await assertFails(
       setDoc(msgRef, {
-        roomSlug: 'active-chat',
+        roomSlug: 'member-room',
         senderUid: 'bob_uid',
         ciphertext: 'AQIDBAUG...',
         iv: '1234567890123456',
@@ -201,11 +251,33 @@ describe('Firestore Security Rules Suite', () => {
       }),
     );
 
-    // Bob tries to spoof Alice as sender -> fails
+    // Bob joins room as member
+    const bobMemberRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'member-room', 'members', 'bob_uid');
+    await assertSucceeds(
+      setDoc(bobMemberRef, {
+        uid: 'bob_uid',
+        role: 'member',
+        status: 'active',
+        joinedAt: now,
+      }),
+    );
+
+    // Now Bob is an active member -> sending message SUCCEEDS
+    await assertSucceeds(
+      setDoc(msgRef, {
+        roomSlug: 'member-room',
+        senderUid: 'bob_uid',
+        ciphertext: 'AQIDBAUG...',
+        iv: '1234567890123456',
+        createdAt: now,
+      }),
+    );
+
+    // Bob tries to spoof Alice as sender -> FAILS
     const spoofedMsgRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'messages', 'msg-spoof');
     await assertFails(
       setDoc(spoofedMsgRef, {
-        roomSlug: 'active-chat',
+        roomSlug: 'member-room',
         senderUid: 'alice_uid',
         ciphertext: 'AQIDBAUG...',
         iv: '1234567890123456',
@@ -214,11 +286,59 @@ describe('Firestore Security Rules Suite', () => {
     );
   });
 
-  it('rejects sending messages to revoked rooms', async () => {
-    if (!testEnv) return;
+  it('rejects departed members from sending messages', async () => {
+    const adminDb = getEnv().authenticatedContext('alice_uid').firestore();
+    const now = Date.now();
+    const roomRef = doc(adminDb, 'artifacts', appId, 'public', 'data', 'rooms', 'depart-room');
+
+    await setDoc(roomRef, {
+      slug: 'depart-room',
+      status: 'active',
+      createdAt: now,
+      expiresAt: now + 3600000,
+      creatorUid: 'alice_uid',
+      ownerUid: 'alice_uid',
+      memberCount: 2,
+      keyCommitment: 'commitment_hash_abc123',
+    });
+
+    const bobDb = getEnv().authenticatedContext('bob_uid').firestore();
+    const bobMemberRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'depart-room', 'members', 'bob_uid');
+
+    // Bob joins
+    await setDoc(bobMemberRef, {
+      uid: 'bob_uid',
+      role: 'member',
+      status: 'active',
+      joinedAt: now,
+    });
+
+    // Bob departs
+    await assertSucceeds(
+      updateDoc(bobMemberRef, {
+        status: 'departed',
+        departedAt: now,
+        updatedAt: now,
+      }),
+    );
+
+    // Departed Bob tries to send message -> FAILS
+    const msgRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'messages', 'msg-after-depart');
+    await assertFails(
+      setDoc(msgRef, {
+        roomSlug: 'depart-room',
+        senderUid: 'bob_uid',
+        ciphertext: 'AQIDBAUG...',
+        iv: '1234567890123456',
+        createdAt: now,
+      }),
+    );
+  });
+
+  it('rejects sending messages to revoked or expired rooms', async () => {
     const now = Date.now();
 
-    // Seed revoked room using admin/security-rules-disabled context
+    // Seed revoked room using security-rules-disabled context
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', 'dead-chat'), {
@@ -227,6 +347,7 @@ describe('Firestore Security Rules Suite', () => {
         createdAt: now - 10000,
         expiresAt: now + 3600000,
         creatorUid: 'alice_uid',
+        ownerUid: 'alice_uid',
         keyCommitment: 'commitment_hash_abc123',
       });
     });
@@ -246,20 +367,30 @@ describe('Firestore Security Rules Suite', () => {
   });
 
   it('prevents modifying message ciphertext during reaction updates', async () => {
-    if (!testEnv) return;
     const now = Date.now();
-    const adminDb = getEnv().authenticatedContext('alice_uid').firestore();
+    const aliceDb = getEnv().authenticatedContext('alice_uid').firestore();
+    const bobDb = getEnv().authenticatedContext('bob_uid').firestore();
 
-    await setDoc(doc(adminDb, 'artifacts', appId, 'public', 'data', 'rooms', 'react-chat'), {
+    await setDoc(doc(aliceDb, 'artifacts', appId, 'public', 'data', 'rooms', 'react-chat'), {
       slug: 'react-chat',
       status: 'active',
       createdAt: now,
       expiresAt: now + 3600000,
       creatorUid: 'alice_uid',
+      ownerUid: 'alice_uid',
+      memberCount: 2,
       keyCommitment: 'commitment_hash_abc123',
     });
 
-    const msgRef = doc(adminDb, 'artifacts', appId, 'public', 'data', 'messages', 'msg-original');
+    // Add Bob as active member
+    await setDoc(doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'react-chat', 'members', 'bob_uid'), {
+      uid: 'bob_uid',
+      role: 'member',
+      status: 'active',
+      joinedAt: now,
+    });
+
+    const msgRef = doc(aliceDb, 'artifacts', appId, 'public', 'data', 'messages', 'msg-original');
     await setDoc(msgRef, {
       roomSlug: 'react-chat',
       senderUid: 'alice_uid',
@@ -269,7 +400,6 @@ describe('Firestore Security Rules Suite', () => {
       reactions: {},
     });
 
-    const bobDb = getEnv().authenticatedContext('bob_uid').firestore();
     const bobMsgRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'messages', 'msg-original');
 
     // Bob toggles plain reaction -> succeeds
@@ -293,6 +423,47 @@ describe('Firestore Security Rules Suite', () => {
       updateDoc(bobMsgRef, {
         ciphertext: 'MaliciousModifiedCiphertext',
         reactions: { '👍': ['bob_uid'] },
+      }),
+    );
+  });
+
+  it('enforces maximum 12 members constraint in room memberCount updates', async () => {
+    const now = Date.now();
+    const aliceDb = getEnv().authenticatedContext('alice_uid').firestore();
+    const roomRef = doc(aliceDb, 'artifacts', appId, 'public', 'data', 'rooms', 'count-chat');
+
+    await setDoc(roomRef, {
+      slug: 'count-chat',
+      status: 'active',
+      createdAt: now,
+      expiresAt: now + 3600000,
+      creatorUid: 'alice_uid',
+      ownerUid: 'alice_uid',
+      memberCount: 1,
+      keyCommitment: 'commitment_hash_abc123',
+    });
+
+    // Updating count to 12 (within ceiling) -> succeeds
+    await assertSucceeds(
+      updateDoc(roomRef, {
+        memberCount: 12,
+        updatedAt: now,
+      }),
+    );
+
+    // Updating count to 13 (exceeds 12-member maximum) -> FAILS
+    await assertFails(
+      updateDoc(roomRef, {
+        memberCount: 13,
+        updatedAt: now,
+      }),
+    );
+
+    // Updating count to 0 (below 1) -> FAILS
+    await assertFails(
+      updateDoc(roomRef, {
+        memberCount: 0,
+        updatedAt: now,
       }),
     );
   });

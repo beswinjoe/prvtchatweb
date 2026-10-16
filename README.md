@@ -26,6 +26,10 @@
    Client listeners and purge routines query documents filtered strictly by `where('roomSlug', '==', activeSlug)`, preventing any cross-conversation data exposure.
 6. **MIME Integrity & XSS Defense**:
    Image attachments undergo client-side magic byte inspection (JPEG, PNG, WebP, GIF) before compression and encryption. SVG, HTML, and XML payloads are strictly rejected.
+7. **Authoritative Single-Owner Role Model & Atomic Transfer**:
+   Every active room has exactly one authoritative owner (`ownerUid`). The creator is the initial owner. Only the owner can destroy/revoke the room. The owner can transfer ownership to any active room member atomically.
+8. **Server-Enforced 12-Participant Capacity**:
+   Concurrency-safe server transactions and Firestore rules enforce a strict limit of 12 active participants per room. The authoritative `members` subcollection tracks active vs. departed status. Non-members and departed members are denied message read/write privileges.
 
 ---
 
@@ -38,9 +42,16 @@ npm install
 
 ### 2. Run Automated Test Suite
 ```bash
+# Unit & cryptography tests
 npm test
+
+# Firestore Emulator security rules tests (requires Java)
+npm run test:rules
+
+# Run full suite (unit + rules)
+npm run test:all
 ```
-Executes comprehensive unit tests verifying AES-256-GCM encryption/decryption, tamper resistance, foreign key rejection, SHA-256 commitments, image magic byte validation, collision-resistant slug generation, and 7-day expiration calculations.
+Executes comprehensive tests verifying AES-256-GCM encryption/decryption, tamper resistance, foreign key rejection, SHA-256 commitments, image magic byte validation, collision-resistant slug generation, 7-day expiration calculations, authoritative room roles, and Firestore security rules.
 
 ### 3. Start RAM-Only Relay Server (No Database / Zero Disk Writes)
 ```bash

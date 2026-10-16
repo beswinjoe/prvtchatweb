@@ -1,0 +1,47 @@
+name: PRVTCHAT CI & Security Rules Verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java 21 (Required for Firebase Firestore Emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Install Cloud Functions Dependencies
+        run: npm --prefix functions ci
+
+      - name: Run Linter
+        run: npm run lint
+
+      - name: Build Frontend Application (Typecheck + Bundling)
+        run: npm run build
+
+      - name: Build Cloud Functions (TypeScript Compiler)
+        run: npm --prefix functions run build
+
+      - name: Run Unit & Cryptography Tests
+        run: npm test
+
+      - name: Run Firestore Security Rules Suite with Firestore Emulator
+        run: npm run test:rules

@@ -5,6 +5,7 @@ import { LandingView } from './components/LandingView';
 import { CreateChatModal } from './components/modals/CreateChatModal';
 import { JoinModal } from './components/modals/JoinModal';
 import { LightboxModal } from './components/modals/LightboxModal';
+import { MemberManagementModal } from './components/modals/MemberManagementModal';
 import { RevokeModal } from './components/modals/RevokeModal';
 import { SecurityModal } from './components/modals/SecurityModal';
 import { ShareModal } from './components/modals/ShareModal';
@@ -43,6 +44,12 @@ import {
   where,
 } from './lib/firebase';
 import { processAndCompressImage } from './lib/image';
+import {
+  joinRoomAuthoritative,
+  leaveRoomAuthoritative,
+  listenToRoomMembers,
+  transferOwnershipAuthoritative,
+} from './lib/roomManager';
 import { generateSecureRoomSlug, sanitizeSlug, validateSlug } from './lib/utils';
 import type {
   ActivePeer,
@@ -56,6 +63,7 @@ import type {
   PresenceRecord,
   ReactionMap,
   RoomData,
+  RoomMember,
   SlugStatus,
 } from './types';
 
@@ -110,6 +118,7 @@ export default function App() {
 
   // Active Conversation State
   const [roomData, setRoomData] = useState<RoomData | null>(null);
+  const [roomMembers, setRoomMembers] = useState<RoomMember[]>([]);
   const [expiredReason, setExpiredReason] = useState<ExpiredReason | null>(null);
   const [encryptedMessages, setEncryptedMessages] = useState<EncryptedMessage[]>([]);
   const [decryptedMessages, setDecryptedMessages] = useState<DecryptedMessage[]>([]);
@@ -129,6 +138,7 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+  const [showMembersModal, setShowMembersModal] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<ImageAttachment | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -238,6 +248,13 @@ export default function App() {
           deletePromises.push(deleteDoc(docSnap.ref));
         });
 
+        // 4. Delete room members subcollection records
+        const membersCol = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', slugToPurge, 'members');
+        const memSnap = await getDocs(membersCol);
+        memSnap.forEach((docSnap: QueryDocumentSnapshot) => {
+          deletePromises.push(deleteDoc(docSnap.ref));
+        });
+
         await Promise.all(deletePromises);
       } catch (err) {
         console.error('Purge error:', err);
@@ -247,7 +264,9 @@ export default function App() {
         setActiveKeyString('');
         setDecryptedMessages([]);
         setEncryptedMessages([]);
+        setRoomMembers([]);
         setShowRevokeConfirm(false);
+        setShowMembersModal(false);
         setExpiredReason(accessRevoked ? targetStatus : 'not_found');
         setCurrentView('expired');
 
@@ -320,6 +339,19 @@ export default function App() {
           return;
         }
 
+        // Authoritatively join room and enforce 12-member capacity limit
+        if (user) {
+          const joinRes = await joinRoomAuthoritative(cleanSlug, user, displayName);
+          if (!joinRes.success) {
+            if (joinRes.error && (joinRes.error.includes('12') || joinRes.error.toLowerCase().includes('capacity'))) {
+              setJoinError('This room has reached its maximum capacity of 12 active participants.');
+            } else {
+              setJoinError(joinRes.error || 'Failed to join conversation room.');
+            }
+            return;
+          }
+        }
+
         setActiveSlug(cleanSlug);
         setActiveKeyString(rawKeyString.trim());
         setActiveCryptoKey(importedKey);
@@ -341,7 +373,7 @@ export default function App() {
         setJoinError('Could not connect to room. Check your network connection.');
       }
     },
-    [purgeAndExpireRoom]
+    [purgeAndExpireRoom, user, displayName]
   );
 
   // --------------------------------------------------------------------------
@@ -744,17 +776,41 @@ export default function App() {
 
       const newRoomDoc: RoomData = {
         slug: cleanedSlug,
+        ownerUid: user.uid,
         creatorUid: user.uid,
         createdAt: now,
         expiresAt,
         ttlLabel,
         status: 'active',
-        allowPeerRevoke: true,
+        memberCount: 1,
+        maxMembers: 12,
+        allowPeerRevoke: false,
         keyCommitment: meta.commitment,
         encryptionCipher: 'AES-256-GCM',
       };
 
       await setDoc(roomRef, newRoomDoc);
+
+      // Initialize authoritative owner membership record in members subcollection
+      const ownerMemberRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', cleanedSlug, 'members', user.uid);
+      await setDoc(ownerMemberRef, {
+        uid: user.uid,
+        role: 'owner',
+        status: 'active',
+        displayName: displayName || 'Creator',
+        joinedAt: now,
+        updatedAt: now,
+      });
+
+      const initialMember: RoomMember = {
+        uid: user.uid,
+        role: 'owner',
+        status: 'active',
+        displayName: displayName || 'Creator',
+        joinedAt: now,
+        updatedAt: now,
+      };
+      setRoomMembers([initialMember]);
 
       setActiveSlug(cleanedSlug);
       setActiveKeyString(keyString);
@@ -1040,8 +1096,23 @@ export default function App() {
     return activePeers.filter((p) => p.uid !== user.uid && p.isTyping);
   }, [activePeers, user]);
 
-  const leaveConversationView = () => {
+  // --------------------------------------------------------------------------
+  // EFFECT: Real-Time Room Members Listener
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    if (!user || currentView !== 'chat' || !activeSlug) {
+      setRoomMembers([]);
+      return;
+    }
+    const unsub = listenToRoomMembers(activeSlug, (members) => {
+      setRoomMembers(members);
+    });
+    return () => unsub();
+  }, [user, currentView, activeSlug]);
+
+  const handleLeaveRoom = useCallback(async () => {
     if (activeSlug && user) {
+      await leaveRoomAuthoritative(activeSlug, user);
       const presenceDocId = `${activeSlug}_${user.uid}`;
       const presenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', presenceDocId);
       deleteDoc(presenceRef).catch(() => {});
@@ -1051,6 +1122,8 @@ export default function App() {
     setActiveKeyString('');
     setActiveCryptoKey(null);
     setRoomData(null);
+    setRoomMembers([]);
+    setShowMembersModal(false);
     setDecryptedMessages([]);
     setEncryptedMessages([]);
     setExpiredReason(null);
@@ -1060,7 +1133,19 @@ export default function App() {
     } catch {
       // Ignore
     }
-  };
+    return { success: true };
+  }, [activeSlug, user]);
+
+  const handleTransferOwnership = useCallback(async (newOwnerUid: string) => {
+    if (!user || !activeSlug) return { success: false, error: 'No active session' };
+    const res = await transferOwnershipAuthoritative(activeSlug, user, newOwnerUid);
+    if (res.success) {
+      setRoomData((prev) => (prev ? { ...prev, ownerUid: newOwnerUid } : prev));
+    }
+    return res;
+  }, [user, activeSlug]);
+
+  const leaveConversationView = handleLeaveRoom;
 
   const handleOpenCreateModal = () => {
     setCreatedRoomResult(null);
@@ -1133,6 +1218,9 @@ export default function App() {
           keyMetadata={keyMetadata}
           activePeers={activePeers}
           typingPeers={typingPeers}
+          roomMembers={roomMembers}
+          onOpenMembersModal={() => setShowMembersModal(true)}
+          onLeaveRoom={handleLeaveRoom}
           isDraggingOver={isDraggingOver}
           setIsDraggingOver={setIsDraggingOver}
           handleImageFile={handleImageFile}
@@ -1222,6 +1310,17 @@ export default function App() {
         onClose={() => setShowRevokeConfirm(false)}
         onConfirm={() => purgeAndExpireRoom(activeSlug, 'revoked')}
         activeSlug={activeSlug}
+      />
+
+      <MemberManagementModal
+        isOpen={showMembersModal}
+        onClose={() => setShowMembersModal(false)}
+        activeSlug={activeSlug}
+        members={roomMembers}
+        currentUid={user ? user.uid : null}
+        ownerUid={roomData ? (roomData.ownerUid || roomData.creatorUid) : ''}
+        onTransferOwnership={handleTransferOwnership}
+        onLeaveRoom={handleLeaveRoom}
       />
 
       <SecurityModal

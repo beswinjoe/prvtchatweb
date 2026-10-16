@@ -19,7 +19,7 @@ This comprehensive audit evaluated the full application stack:
 5. **Image Processing, Attachment Encryption & MIME Integrity**
 6. **Error Handling, Telemetry & Privacy Leakage**
 
-A total of **8 security vulnerabilities** were identified and remediated directly within the codebase, accompanied by automated tests.
+A total of **12 security vulnerabilities** were identified and remediated directly within the codebase, accompanied by automated tests.
 
 ---
 
@@ -35,6 +35,10 @@ A total of **8 security vulnerabilities** were identified and remediated directl
 | **SEC-06** | Client-Only Expiration & Lack of Trusted Backend Deletion | **HIGH** | `src/lib/expiry.ts`, `functions/` | **RESOLVED** |
 | **SEC-07** | Extractable CryptoKeys & Incomplete URL Hash Clearing | **MEDIUM** | `src/lib/crypto.ts`, `src/App.tsx` | **RESOLVED** |
 | **SEC-08** | Stale Branding & Unhandled Error Boundary Fallbacks | **LOW** | `src/components/ErrorBoundary.tsx`, `src/lib/utils.ts` | **RESOLVED** |
+| **SEC-09** | Peer Revocation & Unauthoritative Room Ownership | **CRITICAL** | `firestore.rules`, `src/App.tsx`, `functions/src/index.ts` | **RESOLVED** |
+| **SEC-10** | Uncapped Room Concurrency & Lack of Server-Enforced Capacity | **HIGH** | `firestore.rules`, `functions/src/index.ts`, `src/lib/roomManager.ts` | **RESOLVED** |
+| **SEC-11** | Missing Room Membership Authorization for Read/Write Ops | **HIGH** | `firestore.rules`, `src/lib/roomManager.ts` | **RESOLVED** |
+| **SEC-12** | Silent Rules Test Skips & Missing Automated CI Pipeline | **MEDIUM** | `src/lib/firestore.rules.test.ts`, `.github/workflows/ci.yml` | **RESOLVED** |
 
 ---
 
@@ -134,6 +138,51 @@ A total of **8 security vulnerabilities** were identified and remediated directl
 - **Remediation:**
   - Standardized all titles, logs, and user-facing copy to `PRVTCHAT`.
   - Sanitized error boundary logs to avoid exposing internal state, room slugs, or key fragments.
+
+---
+
+### SEC-09: Peer Revocation & Unauthoritative Room Ownership
+- **Severity:** Critical (CVSS 9.1)
+- **Vulnerability:**
+  `allowPeerRevoke: true` allowed arbitrary room participants to revoke and shred the conversation room. Furthermore, rooms lacked an authoritative owner role model with safe ownership transfer mechanics, risking orphaned rooms or rogue participant destruction.
+- **Remediation:**
+  - Removed `allowPeerRevoke` permission from Firestore security rules and client logic. Only the authoritative owner (`ownerUid`) may revoke a room.
+  - Implemented an atomic `transferOwnership` flow (Cloud Function + Firestore rules) that verifies caller is the current owner, verifies the target is an active room member, and updates roles atomically.
+  - Creator becomes the initial owner, with backwards compatibility for legacy `creatorUid`.
+
+---
+
+### SEC-10: Uncapped Room Concurrency & Lack of Server-Enforced Capacity
+- **Severity:** High (CVSS 7.5)
+- **Vulnerability:**
+  Rooms had no hard participant capacity enforcement on the backend, allowing unlimited simultaneous joins. Stale presence records were conflated with active membership.
+- **Remediation:**
+  - Implemented a server-side 12-member maximum capacity limit enforced in transactions and Firestore rules.
+  - Created an authoritative `members` subcollection (`rooms/{slug}/members/{uid}`) tracking active vs. departed status.
+  - Concurrency-safe join transaction atomically rejects the 13th unique active participant.
+  - Leaving marks member `departed` and decrements `memberCount`, releasing capacity safely.
+
+---
+
+### SEC-11: Missing Room Membership Authorization for Read/Write Ops
+- **Severity:** High (CVSS 7.7)
+- **Vulnerability:**
+  Firestore security rules allowed any authenticated user to read/write messages to any room as long as the room was active, without verifying that the user was an active member of that specific room.
+- **Remediation:**
+  - Added helper `isRoomMember(appId, roomSlug)` in `firestore.rules`.
+  - Requires `members/{request.auth.uid}.status == 'active'` for reading and sending messages, posting reactions, and updating presence.
+  - Departed or non-member users are denied read and write access.
+
+---
+
+### SEC-12: Silent Rules Test Skips & Missing Automated CI Pipeline
+- **Severity:** Medium (CVSS 5.3)
+- **Vulnerability:**
+  `firestore.rules.test.ts` contained `if (!testEnv) return;`, causing security rules tests to silently pass with green exit code when the Firebase emulator was absent. There was no CI workflow to verify builds or rules in pull requests.
+- **Remediation:**
+  - Removed all silent conditional returns from test suites; tests now fail immediately if the required emulator environment is unavailable.
+  - Added npm scripts `test:rules` and `test:all` using `firebase emulators:exec`.
+  - Created `.github/workflows/ci.yml` running lint, build, functions build, unit tests, and emulator rules tests on every push.
 
 ---
 
