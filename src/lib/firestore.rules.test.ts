@@ -275,6 +275,43 @@ describe('Firestore Security Rules Suite', () => {
     }));
   });
 
+  it('allows a sender to erase their own encrypted payload but not another sender\'s payload', async () => {
+    await seedRoom('message-erasure-room');
+    const aliceDb = testEnv.authenticatedContext('alice_uid').firestore();
+    const bobDb = testEnv.authenticatedContext('bob_uid').firestore();
+    const aliceMessageRef = doc(aliceDb, 'artifacts', appId, 'public', 'data', 'messages', 'alice-erasure');
+    const bobMessageRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'messages', 'alice-erasure');
+
+    await setDoc(aliceMessageRef, {
+      roomSlug: 'message-erasure-room',
+      senderUid: 'alice_uid',
+      ciphertext: 'EncryptedPayload',
+      iv: '1234567890123456',
+      reactionsIv: '1234567890123456',
+      reactionsCiphertext: 'EncryptedReactions',
+      createdAt: Date.now(),
+      deleted: false,
+    });
+
+    await assertFails(updateDoc(bobMessageRef, {
+      ciphertext: '',
+      iv: '',
+      reactionsIv: '',
+      reactionsCiphertext: '',
+      deleted: true,
+      deletedAt: Date.now(),
+    }));
+
+    await assertSucceeds(updateDoc(aliceMessageRef, {
+      ciphertext: '',
+      iv: '',
+      reactionsIv: '',
+      reactionsCiphertext: '',
+      deleted: true,
+      deletedAt: Date.now(),
+    }));
+  });
+
   it('allows active members to write their own presence but rejects non-members', async () => {
     await seedRoom('presence-room');
     const bobDb = testEnv.authenticatedContext('bob_uid').firestore();
