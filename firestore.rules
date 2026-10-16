@@ -137,15 +137,26 @@ service cloud.firestore {
           && isRoomMember(appId, roomSlug)
           && (
             (
-              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy'])
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'deleted', 'deletedAt', 'deletedBy', 'ciphertext', 'iv', 'reactionsIv', 'reactionsCiphertext'
+              ])
               && (resource.data.senderUid == request.auth.uid || isRoomOwner(appId, roomSlug))
+              && request.resource.data.deleted == true
+              && request.resource.data.ciphertext == ''
+              && request.resource.data.iv == ''
+              && request.resource.data.reactionsIv == ''
+              && request.resource.data.reactionsCiphertext == ''
+              && request.resource.data.senderUid == resource.data.senderUid
+              && request.resource.data.createdAt == resource.data.createdAt
             )
-            || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'reactionsIv', 'reactionsCiphertext', 'reactionsUpdatedAt'])
-          )
-          && request.resource.data.ciphertext == resource.data.ciphertext
-          && request.resource.data.iv == resource.data.iv
-          && request.resource.data.senderUid == resource.data.senderUid
-          && request.resource.data.createdAt == resource.data.createdAt;
+            || (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'reactionsIv', 'reactionsCiphertext', 'reactionsUpdatedAt'])
+              && request.resource.data.ciphertext == resource.data.ciphertext
+              && request.resource.data.iv == resource.data.iv
+              && request.resource.data.senderUid == resource.data.senderUid
+              && request.resource.data.createdAt == resource.data.createdAt
+            )
+          );
 
         allow delete: if isAuthenticated()
           && (
@@ -203,16 +214,28 @@ service cloud.firestore {
         && isRoomMember(appId, resource.data.roomSlug)
         && (
           (
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy'])
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'deleted', 'deletedAt', 'deletedBy', 'ciphertext', 'iv', 'reactionsIv', 'reactionsCiphertext'
+            ])
             && (resource.data.senderUid == request.auth.uid || isRoomOwner(appId, resource.data.roomSlug))
+            && request.resource.data.deleted == true
+            && request.resource.data.ciphertext == ''
+            && request.resource.data.iv == ''
+            && request.resource.data.reactionsIv == ''
+            && request.resource.data.reactionsCiphertext == ''
+            && request.resource.data.senderUid == resource.data.senderUid
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.roomSlug == resource.data.roomSlug
           )
-          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'reactionsIv', 'reactionsCiphertext', 'reactionsUpdatedAt'])
-        )
-        && request.resource.data.ciphertext == resource.data.ciphertext
-        && request.resource.data.iv == resource.data.iv
-        && request.resource.data.senderUid == resource.data.senderUid
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.roomSlug == resource.data.roomSlug;
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'reactionsIv', 'reactionsCiphertext', 'reactionsUpdatedAt'])
+            && request.resource.data.ciphertext == resource.data.ciphertext
+            && request.resource.data.iv == resource.data.iv
+            && request.resource.data.senderUid == resource.data.senderUid
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.roomSlug == resource.data.roomSlug
+          )
+        );
 
       allow delete: if isAuthenticated()
         && (
