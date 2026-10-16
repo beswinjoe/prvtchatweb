@@ -36,8 +36,11 @@ service cloud.firestore {
     function isRoomMember(appId, roomSlug) {
       let memberPath = /databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)/members/$(request.auth.uid);
       return roomExistsAndActive(appId, roomSlug)
-        && exists(memberPath)
-        && get(memberPath).data.status == 'active';
+        && (
+          // Backward compatibility for older rooms that predate membership documents.
+          (isRoomOwner(appId, roomSlug) && !exists(memberPath))
+          || (exists(memberPath) && get(memberPath).data.status == 'active')
+        );
     }
 
     function isValidLifetime(roomData) {
