@@ -74,7 +74,6 @@ service cloud.firestore {
         && request.resource.data.status in ['revoked', 'expired']
         && request.resource.data.revokedBy == request.auth.uid
         && request.resource.data.revokedAt is number
-        && request.resource.data.revokedAt <= request.time.toMillis()
         && request.resource.data.creatorUid == resource.data.creatorUid
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.createdAt == resource.data.createdAt
