@@ -9,7 +9,7 @@ import { RevokeModal } from './components/modals/RevokeModal';
 import { SecurityModal } from './components/modals/SecurityModal';
 import { ShareModal } from './components/modals/ShareModal';
 import { Navbar } from './components/Navbar';
-import { DEFAULT_EXPIRATION_ID, EXPIRATION_OPTIONS } from './lib/constants';
+import { DEFAULT_EXPIRATION_ID } from './lib/constants';
 import {
   computeKeyMetadata,
   decryptPayload,
@@ -17,7 +17,7 @@ import {
   generateRoomKey,
   importRoomKey,
 } from './lib/crypto';
-import { calculateExpiresAt, isRoomExpired, isRoomRevoked } from './lib/expiry';
+import { calculateExpiresAt, getTtlLabel, isRoomExpired, isRoomRevoked } from './lib/expiry';
 import {
   addDoc,
   appId,
@@ -92,6 +92,7 @@ export default function App() {
     reason: '',
   });
   const [selectedTtl, setSelectedTtl] = useState(DEFAULT_EXPIRATION_ID);
+  const [customExpiresAt, setCustomExpiresAt] = useState<number | null>(null);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createdRoomResult, setCreatedRoomResult] = useState<{
@@ -731,15 +732,22 @@ export default function App() {
       const meta = await computeKeyMetadata(cryptoKey);
 
       const now = Date.now();
-      const expiresAt = calculateExpiresAt(now, selectedTtl);
-      const option = EXPIRATION_OPTIONS.find((o) => o.id === selectedTtl) || EXPIRATION_OPTIONS[1];
+      if (selectedTtl === 'custom') {
+        if (!customExpiresAt || customExpiresAt <= now) {
+          setCreateError('Please pick a future expiration date and time.');
+          setIsCreatingRoom(false);
+          return false;
+        }
+      }
+      const expiresAt = calculateExpiresAt(now, selectedTtl, customExpiresAt);
+      const ttlLabel = getTtlLabel(selectedTtl, expiresAt, now);
 
       const newRoomDoc: RoomData = {
         slug: cleanedSlug,
         creatorUid: user.uid,
         createdAt: now,
         expiresAt,
-        ttlLabel: option.label,
+        ttlLabel,
         status: 'active',
         allowPeerRevoke: true,
         keyCommitment: meta.commitment,
@@ -1176,6 +1184,8 @@ export default function App() {
         slugStatus={slugStatus}
         selectedTtl={selectedTtl}
         setSelectedTtl={setSelectedTtl}
+        customExpiresAt={customExpiresAt}
+        setCustomExpiresAt={setCustomExpiresAt}
         isCreatingRoom={isCreatingRoom}
         createError={createError}
         onCreateRoom={handleCreateConversation}

@@ -3,6 +3,7 @@ import { MAX_LIFETIME_MS } from './constants';
 import {
   calculateExpiresAt,
   formatTimeRemaining,
+  getTtlLabel,
   isRoomActive,
   isRoomExpired,
   isRoomRevoked,
@@ -30,6 +31,34 @@ describe('Expiration & Revocation Logic', () => {
   it('calculates 7 days expiration correctly', () => {
     const expiresAt = calculateExpiresAt(baseTime, '7d');
     expect(expiresAt - baseTime).toBe(7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('calculates custom expiration date correctly', () => {
+    const customTime = baseTime + 14 * 60 * 60 * 1000; // 14 hours
+    const expiresAt = calculateExpiresAt(baseTime, 'custom', customTime);
+    expect(expiresAt).toBe(customTime);
+  });
+
+  it('strictly clamps custom expiration exceeding 7 days to MAX_LIFETIME_MS', () => {
+    const customTime = baseTime + 10 * 24 * 60 * 60 * 1000; // 10 days
+    const expiresAt = calculateExpiresAt(baseTime, 'custom', customTime);
+    expect(expiresAt - baseTime).toBe(MAX_LIFETIME_MS);
+  });
+
+  it('falls back to default 24h when custom expiresAt is missing or past', () => {
+    const expiresAtNull = calculateExpiresAt(baseTime, 'custom', null);
+    expect(expiresAtNull - baseTime).toBe(24 * 60 * 60 * 1000);
+
+    const expiresAtPast = calculateExpiresAt(baseTime, 'custom', baseTime - 1000);
+    expect(expiresAtPast - baseTime).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it('generates accurate labels for preset and custom expiration', () => {
+    expect(getTtlLabel('2h', baseTime + 2 * 3600000, baseTime)).toBe('2 hours');
+    expect(getTtlLabel('24h', baseTime + 24 * 3600000, baseTime)).toBe('24 hours');
+    expect(getTtlLabel('custom', baseTime + 45 * 60000, baseTime)).toBe('45m (custom)');
+    expect(getTtlLabel('custom', baseTime + 12 * 3600000, baseTime)).toBe('12h (custom)');
+    expect(getTtlLabel('custom', baseTime + 2 * 86400000, baseTime)).toBe('2d (custom)');
   });
 
   it('strictly clamps any attempt to exceed 7 days to MAX_LIFETIME_MS', () => {

@@ -15,9 +15,11 @@ export interface KeyMetadata {
   commitment: string;
 }
 
+export type ExpirationTtlId = '2h' | '24h' | '3d' | '7d' | 'custom';
+
 /** Expiration / TTL configuration option */
 export interface ExpirationOption {
-  id: '2h' | '24h' | '3d' | '7d';
+  id: ExpirationTtlId;
   label: string;
   shortLabel: string;
   ms: number;

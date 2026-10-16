@@ -11,12 +11,35 @@ import type { RoomData } from '../types';
  */
 export function calculateExpiresAt(
   createdAt: number,
-  ttlId: '2h' | '24h' | '3d' | '7d' | string
+  ttlId: string,
+  customExpiresAt?: number | null
 ): number {
+  if (ttlId === 'custom' && customExpiresAt && customExpiresAt > createdAt) {
+    const requestedLifetime = customExpiresAt - createdAt;
+    const clampedLifetime = Math.min(requestedLifetime, MAX_LIFETIME_MS);
+    return createdAt + clampedLifetime;
+  }
   const option = EXPIRATION_OPTIONS.find((o) => o.id === ttlId) || EXPIRATION_OPTIONS[1]; // default 24h
   const requestedLifetime = option.ms;
   const clampedLifetime = Math.min(requestedLifetime, MAX_LIFETIME_MS);
   return createdAt + clampedLifetime;
+}
+
+/**
+ * Returns human-readable label for room TTL.
+ */
+export function getTtlLabel(ttlId: string, expiresAt: number, createdAt: number): string {
+  if (ttlId === 'custom') {
+    const diffMs = Math.max(0, expiresAt - createdAt);
+    const totalMinutes = Math.round(diffMs / 60000);
+    if (totalMinutes < 60) return `${totalMinutes}m (custom)`;
+    const totalHours = Math.round(diffMs / 3600000);
+    if (totalHours < 24) return `${totalHours}h (custom)`;
+    const totalDays = (diffMs / (24 * 3600000)).toFixed(1).replace('.0', '');
+    return `${totalDays}d (custom)`;
+  }
+  const option = EXPIRATION_OPTIONS.find((o) => o.id === ttlId);
+  return option ? option.label : '24 hours';
 }
 
 /**
