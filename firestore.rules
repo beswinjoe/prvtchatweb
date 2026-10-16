@@ -57,6 +57,10 @@ service cloud.firestore {
 
       // A client may create only its own room. Membership is initialized separately as the owner record.
       allow create: if isAuthenticated()
+        && request.resource.data.keys().hasOnly([
+          'slug', 'ownerUid', 'creatorUid', 'createdAt', 'expiresAt', 'ttlLabel',
+          'status', 'memberCount', 'maxMembers', 'allowPeerRevoke', 'keyCommitment', 'encryptionCipher'
+        ])
         && request.resource.data.status == 'active'
         && isValidLifetime(request.resource.data)
         && request.resource.data.createdAt <= request.time.toMillis()
