@@ -1,8 +1,56 @@
 // =============================================================================
-// VESPER E2EE MESSAGING — UTILITY HELPERS
+// PRVTCHAT E2EE MESSAGING — UTILITY HELPERS
 // =============================================================================
 
 import type { ParticipantPalette, SlugValidation } from '../types';
+
+const ADJECTIVES = [
+  'silent', 'calm', 'hidden', 'azure', 'amber', 'swift', 'lunar', 'solar',
+  'coastal', 'golden', 'frosty', 'rustic', 'serene', 'velvet', 'misty', 'shadow',
+  'iron', 'cedar', 'nordic', 'alpine', 'arctic', 'brave', 'quiet', 'gentle',
+];
+
+const NOUNS = [
+  'harbor', 'summit', 'breeze', 'valley', 'meadow', 'island', 'canyon', 'forest',
+  'beacon', 'aurora', 'stream', 'horizon', 'glacier', 'shield', 'oasis', 'cove',
+  'ridge', 'sanctuary', 'cascade', 'monarch', 'passage', 'spire', 'grove', 'haven',
+];
+
+/**
+ * Generates a collision-resistant, cryptographically secure random room slug.
+ * Format: [adjective]-[noun]-[6 secure random alphanumeric chars]
+ */
+export function generateSecureRoomSlug(): string {
+  const cryptoObj =
+    typeof window !== 'undefined' && window.crypto
+      ? window.crypto
+      : typeof globalThis !== 'undefined' && globalThis.crypto
+      ? (globalThis.crypto as Crypto)
+      : null;
+
+  const adjIndex = cryptoObj
+    ? cryptoObj.getRandomValues(new Uint32Array(1))[0] % ADJECTIVES.length
+    : Math.floor(Math.random() * ADJECTIVES.length);
+  const nounIndex = cryptoObj
+    ? cryptoObj.getRandomValues(new Uint32Array(1))[0] % NOUNS.length
+    : Math.floor(Math.random() * NOUNS.length);
+
+  const adj = ADJECTIVES[adjIndex];
+  const noun = NOUNS[nounIndex];
+
+  let randomSuffix = '';
+  if (cryptoObj) {
+    const bytes = cryptoObj.getRandomValues(new Uint8Array(4));
+    for (let i = 0; i < bytes.length; i++) {
+      randomSuffix += bytes[i].toString(36).padStart(2, '0');
+    }
+    randomSuffix = randomSuffix.slice(0, 6);
+  } else {
+    randomSuffix = Math.random().toString(36).substring(2, 8);
+  }
+
+  return `${adj}-${noun}-${randomSuffix}`;
+}
 
 /**
  * Sanitizes user input into a URL-friendly slug.

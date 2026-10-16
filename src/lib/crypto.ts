@@ -33,16 +33,23 @@ export function bufferToBase64Url(buffer: ArrayBuffer | Uint8Array): string {
  * Converts a URL-safe Base64 string back to a Uint8Array.
  */
 export function base64UrlToBuffer(base64Url: string): Uint8Array {
+  if (!base64Url || typeof base64Url !== 'string') {
+    throw new Error('Invalid Base64 input: must be a non-empty string.');
+  }
   let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
   while (base64.length % 4) {
     base64 += '=';
   }
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  } catch {
+    throw new Error('Malformed Base64 string encoding.');
   }
-  return bytes;
 }
 
 /**
@@ -67,15 +74,25 @@ export async function generateRoomKey(): Promise<{
 
 /**
  * Imports a URL-safe Base64 key string into a Web Crypto AES-GCM CryptoKey.
+ * @param keyString 32-byte Base64-encoded key
+ * @param extractable Whether key can be exported again (defaults to true for metadata, false for strict session isolation)
  */
-export async function importRoomKey(keyString: string): Promise<CryptoKey> {
-  if (!keyString || typeof keyString !== 'string' || keyString.length < 32) {
+export async function importRoomKey(
+  keyString: string,
+  extractable = true,
+): Promise<CryptoKey> {
+  if (!keyString || typeof keyString !== 'string') {
     throw new Error('Invalid or missing 256-bit encryption key.');
   }
-  const rawBytes = base64UrlToBuffer(keyString);
+  let rawBytes: Uint8Array;
+  try {
+    rawBytes = base64UrlToBuffer(keyString);
+  } catch {
+    throw new Error('Invalid or missing 256-bit encryption key.');
+  }
   if (rawBytes.byteLength !== 32) {
     throw new Error(
-      `Invalid key length (${rawBytes.byteLength * 8} bits). Expected 256 bits.`,
+      `Invalid key length (${rawBytes.byteLength * 8} bits). Expected 256 bits (32 bytes).`,
     );
   }
   const crypto = getCrypto();
@@ -83,7 +100,7 @@ export async function importRoomKey(keyString: string): Promise<CryptoKey> {
     'raw',
     rawBytes as BufferSource,
     { name: 'AES-GCM', length: 256 },
-    true,
+    extractable,
     ['encrypt', 'decrypt'],
   );
 }
@@ -117,23 +134,27 @@ export async function computeKeyMetadata(
 }
 
 /**
- * Encrypts any JSON-serializable object using AES-256-GCM with a fresh
- * 96-bit random IV. Never sends plaintext to the server.
+ * Encrypts any JSON-serializable object using AES-256-GCM with a fresh,
+ * unique 96-bit (12-byte) random IV. Never sends plaintext or reusable IVs.
  */
 export async function encryptPayload(
   cryptoKey: CryptoKey,
   payloadObj: unknown,
 ): Promise<EncryptedPacket> {
+  if (payloadObj === undefined) {
+    throw new Error('Payload cannot be undefined.');
+  }
   const crypto = getCrypto();
-  const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit recommended IV
-  const encodedPlaintext = new TextEncoder().encode(
-    JSON.stringify(payloadObj),
-  );
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit NIST SP 800-38D recommended IV
+  const serialized = JSON.stringify(payloadObj);
+  const encodedPlaintext = new TextEncoder().encode(serialized);
+
   const ciphertextBuffer = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: iv as BufferSource, tagLength: 128 },
     cryptoKey,
     encodedPlaintext,
   );
+
   return {
     iv: bufferToBase64Url(iv),
     ciphertext: bufferToBase64Url(ciphertextBuffer),
@@ -143,21 +164,50 @@ export async function encryptPayload(
 
 /**
  * Decrypts an { iv, ciphertext } record back into its original JSON payload.
- * Throws if tampered with or if the wrong key is used.
+ * Throws if tampered with, wrong key, invalid IV length, or corrupted bytes.
  */
 export async function decryptPayload<T = unknown>(
   cryptoKey: CryptoKey,
   ivBase64: string,
   ciphertextBase64: string,
 ): Promise<T> {
+  if (!ivBase64 || typeof ivBase64 !== 'string') {
+    throw new Error('Missing or invalid IV.');
+  }
+  if (!ciphertextBase64 || typeof ciphertextBase64 !== 'string') {
+    throw new Error('Missing or invalid ciphertext.');
+  }
+
   const crypto = getCrypto();
   const iv = base64UrlToBuffer(ivBase64);
+
+  // Strict 96-bit IV verification
+  if (iv.byteLength !== 12) {
+    throw new Error(
+      `Invalid IV length (${iv.byteLength * 8} bits). AES-256-GCM requires a 96-bit (12-byte) IV.`,
+    );
+  }
+
   const ciphertext = base64UrlToBuffer(ciphertextBase64);
-  const decryptedBuffer = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource, tagLength: 128 },
-    cryptoKey,
-    ciphertext as BufferSource,
-  );
+  if (ciphertext.byteLength < 16) {
+    throw new Error('Ciphertext too short to contain a valid 128-bit GCM authentication tag.');
+  }
+
+  let decryptedBuffer: ArrayBuffer;
+  try {
+    decryptedBuffer = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv as BufferSource, tagLength: 128 },
+      cryptoKey,
+      ciphertext as BufferSource,
+    );
+  } catch {
+    throw new Error('Ciphertext integrity check failed: payload was tampered with or key is invalid.');
+  }
+
   const jsonStr = new TextDecoder().decode(decryptedBuffer);
-  return JSON.parse(jsonStr) as T;
+  try {
+    return JSON.parse(jsonStr) as T;
+  } catch {
+    throw new Error('Decrypted content is malformed or invalid JSON.');
+  }
 }

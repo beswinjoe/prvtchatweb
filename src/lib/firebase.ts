@@ -1,12 +1,5 @@
 // =============================================================================
-// FIREBASE INITIALIZATION & ADAPTIVE ZERO-CONFIG FALLBACK RELAY
-// =============================================================================
-// If a valid __firebase_config is injected (e.g. Canvas/Firebase Studio),
-// this uses live Firebase Auth & Firestore.
-// If running standalone (e.g. local dev, static preview), this seamlessly
-// uses an in-memory + BroadcastChannel + localStorage real-time relay so
-// that E2EE messaging, multi-tab testing, and security verification work
-// instantly out of the box with zero runtime errors or blank screens.
+// PRVTCHAT FIREBASE INITIALIZATION & SECURE DATABASE ADAPTER
 // =============================================================================
 
 import { initializeApp, type FirebaseApp } from 'firebase/app';
@@ -26,7 +19,7 @@ declare global {
 export interface DocumentSnapshot<T = any> {
   id: string;
   exists: () => boolean;
-  data: () => T;
+  data: () => T | undefined;
 }
 
 export interface QueryDocumentSnapshot<T = any> {
@@ -54,7 +47,6 @@ export interface DocumentReference {
   path: string;
   id: string;
   parentPath?: string;
-  // allow real DocumentReference compatibility
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
@@ -62,62 +54,111 @@ export interface DocumentReference {
 export interface CollectionReference {
   _isMock?: boolean;
   path: string;
-  // allow real CollectionReference compatibility
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
+}
+
+export interface QueryConstraintMock {
+  _type: 'where' | 'orderBy' | 'limit';
+  fieldPath?: string;
+  opStr?: string;
+  value?: unknown;
+  directionStr?: 'asc' | 'desc';
+  limitNum?: number;
+}
+
+export interface QueryMock {
+  _isMock: boolean;
+  _isQuery: boolean;
+  path: string;
+  constraints: QueryConstraintMock[];
 }
 
 export const appId: string =
   typeof __app_id !== 'undefined' && __app_id ? __app_id : 'prvtchat-ephemeral-e2ee';
 
-// Determine if valid Firebase credentials exist
-const parsedConfig = (() => {
-  try {
-    if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+/**
+ * Resolves Firebase configuration from environment variables or runtime injection.
+ */
+function resolveFirebaseConfig(): Record<string, unknown> | null {
+  // 1. Injected __firebase_config (Canvas / container hosting)
+  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+    try {
       const cfg =
         typeof __firebase_config === 'string'
           ? JSON.parse(__firebase_config)
           : __firebase_config;
       if (cfg && cfg.apiKey && cfg.projectId) {
-        return cfg;
+        return cfg as Record<string, unknown>;
       }
+    } catch {
+      // Ignore
     }
-  } catch {
-    // Ignore parse error
   }
+
+  // 2. Vite environment variables
+  const env = import.meta.env;
+  if (env.VITE_FIREBASE_API_KEY && env.VITE_FIREBASE_PROJECT_ID) {
+    return {
+      apiKey: env.VITE_FIREBASE_API_KEY,
+      authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || `${env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
+      projectId: env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || `${env.VITE_FIREBASE_PROJECT_ID}.appspot.com`,
+      messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+      appId: env.VITE_FIREBASE_APP_ID || '',
+    };
+  }
+
   return null;
-})();
+}
+
+const resolvedConfig = resolveFirebaseConfig();
 
 let realAppInstance: FirebaseApp | null = null;
 let realAuthInstance: realAuth.Auth | null = null;
 let realDbInstance: realFirestore.Firestore | null = null;
 
-if (parsedConfig) {
+if (resolvedConfig) {
   try {
-    realAppInstance = initializeApp(parsedConfig);
+    realAppInstance = initializeApp(resolvedConfig);
     realAuthInstance = realAuth.getAuth(realAppInstance);
     realDbInstance = realFirestore.getFirestore(realAppInstance);
   } catch (err) {
-    console.warn('Real Firebase initialization failed, switching to local relay:', err);
+    console.warn('Real Firebase initialization failed:', err);
     realAppInstance = null;
     realAuthInstance = null;
     realDbInstance = null;
   }
 }
 
-export const isUsingMockRelay = !realAppInstance;
+export const isProduction = import.meta.env.PROD;
+export const isMockRelayAllowed =
+  import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_RELAY === 'true';
+
+export const isFirebaseConfigured = Boolean(realAppInstance);
+
+/**
+ * In production, if Firebase is missing and mock relay is not explicitly allowed,
+ * this error is populated so the application can fail safe with an explanatory screen
+ * rather than silently simulating multi-user chat on a single device.
+ */
+export const firebaseConfigError: string | null =
+  !realAppInstance && isProduction && !isMockRelayAllowed
+    ? 'Firebase configuration is missing in production. Please set VITE_FIREBASE_API_KEY and VITE_FIREBASE_PROJECT_ID in your environment deployment settings.'
+    : null;
+
+export const auth = realAuthInstance;
+export const db = realDbInstance;
 
 // =============================================================================
-// STANDALONE IN-MEMORY & BROADCAST RELAY (Local Dev / Offline Support)
+// STANDALONE IN-MEMORY & BROADCAST RELAY (Local Dev & Testing Only)
 // =============================================================================
 
-// In-memory store: Map<path, Record<string, unknown>>
 const mockStore = new Map<string, Record<string, unknown>>();
+const STORAGE_KEY = 'prvtchat_local_relay_v2';
 
-// Load saved data if present in localStorage
-const STORAGE_KEY = 'prvtchat_local_relay_v1';
 try {
-  if (typeof window !== 'undefined' && window.localStorage) {
+  if (typeof window !== 'undefined' && window.localStorage && isMockRelayAllowed) {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
@@ -133,6 +174,7 @@ try {
 }
 
 const persistStore = () => {
+  if (!isMockRelayAllowed) return;
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       const obj: Record<string, Record<string, unknown>> = {};
@@ -146,7 +188,6 @@ const persistStore = () => {
   }
 };
 
-// Cross-tab broadcast channel
 type BroadcastMessage =
   | { type: 'set'; path: string; data: Record<string, unknown> }
   | { type: 'update'; path: string; data: Record<string, unknown> }
@@ -154,21 +195,18 @@ type BroadcastMessage =
   | { type: 'clear' };
 
 const channel: BroadcastChannel | null =
-  typeof window !== 'undefined' && 'BroadcastChannel' in window
+  typeof window !== 'undefined' && 'BroadcastChannel' in window && isMockRelayAllowed
     ? new BroadcastChannel('prvtchat_cross_tab_relay')
     : null;
 
-// Subscribers for doc & collection paths: Map<path, Set<() => void>>
 const subscribers = new Map<string, Set<() => void>>();
 
 const notifySubscribers = (path: string) => {
-  // Notify exact doc listeners
   const docListeners = subscribers.get(path);
   if (docListeners) {
     docListeners.forEach((fn) => fn());
   }
 
-  // Also notify parent collection listeners
   const lastSlash = path.lastIndexOf('/');
   if (lastSlash > 0) {
     const parentPath = path.substring(0, lastSlash);
@@ -193,49 +231,47 @@ if (channel) {
   };
 }
 
-// Generate persistent mock anonymous user ID per browser session
 const getMockUser = (): User => {
   let uid = '';
   try {
     if (typeof window !== 'undefined' && window.sessionStorage) {
       uid = window.sessionStorage.getItem('prvtchat_mock_uid') || '';
       if (!uid) {
-        uid = 'anon_' + Math.random().toString(36).substring(2, 9);
+        const cryptoObj = window.crypto || (globalThis as unknown as { crypto: Crypto }).crypto;
+        const randBytes = cryptoObj.getRandomValues(new Uint8Array(8));
+        let hex = '';
+        for (let i = 0; i < randBytes.length; i++) {
+          hex += randBytes[i].toString(16).padStart(2, '0');
+        }
+        uid = 'anon_' + hex;
         window.sessionStorage.setItem('prvtchat_mock_uid', uid);
       }
     }
   } catch {
-    uid = 'anon_local_peer';
+    uid = 'anon_local_operator';
   }
-  return { uid, isAnonymous: true };
+  return {
+    uid: uid || 'anon_local_operator',
+    displayName: 'Operator',
+    isAnonymous: true,
+  };
 };
 
 const mockUser = getMockUser();
 
 // =============================================================================
-// EXPORTED UNIFIED API
+// UNIFIED FIRESTORE API WRAPPERS
 // =============================================================================
 
-export const auth = realAuthInstance || {
-  currentUser: mockUser,
-  _isMock: true,
-};
-
-export const db = realDbInstance || {
-  _isMock: true,
-};
-
-// Document Reference builder
 export function doc(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _database: any,
+  _database: unknown,
   ...pathSegments: string[]
 ): DocumentReference {
+  const cleanPath = pathSegments.filter(Boolean).join('/');
   if (realDbInstance) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (realFirestore.doc as any)(_database, ...pathSegments);
+    return (realFirestore.doc as any)(realDbInstance, cleanPath);
   }
-  const cleanPath = pathSegments.filter(Boolean).join('/');
   const lastSlash = cleanPath.lastIndexOf('/');
   const id = lastSlash >= 0 ? cleanPath.substring(lastSlash + 1) : cleanPath;
   const parentPath = lastSlash >= 0 ? cleanPath.substring(0, lastSlash) : '';
@@ -247,66 +283,109 @@ export function doc(
   };
 }
 
-// Collection Reference builder
 export function collection(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _database: any,
+  _database: unknown,
   ...pathSegments: string[]
 ): CollectionReference {
+  const cleanPath = pathSegments.filter(Boolean).join('/');
   if (realDbInstance) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (realFirestore.collection as any)(_database, ...pathSegments);
+    return (realFirestore.collection as any)(realDbInstance, cleanPath);
   }
-  const cleanPath = pathSegments.filter(Boolean).join('/');
   return {
     _isMock: true,
     path: cleanPath,
   };
 }
 
-// Get Document
-export async function getDoc(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  docRef: any
-): Promise<DocumentSnapshot> {
+export function where(fieldPath: string, opStr: string, value: unknown): QueryConstraintMock {
+  return { _type: 'where', fieldPath, opStr, value };
+}
+
+export function orderBy(
+  fieldPath: string,
+  directionStr: 'asc' | 'desc' = 'asc',
+): QueryConstraintMock {
+  return { _type: 'orderBy', fieldPath, directionStr };
+}
+
+export function limit(limitNum: number): QueryConstraintMock {
+  return { _type: 'limit', limitNum };
+}
+
+export function query(
+  colRef: CollectionReference,
+  ...constraints: QueryConstraintMock[]
+): unknown {
+  if (realDbInstance && !colRef._isMock) {
+    const realConstraints = constraints.map((c) => {
+      if (c._type === 'where') return realFirestore.where(c.fieldPath!, c.opStr as realFirestore.WhereFilterOp, c.value);
+      if (c._type === 'orderBy') return realFirestore.orderBy(c.fieldPath!, c.directionStr);
+      if (c._type === 'limit') return realFirestore.limit(c.limitNum!);
+      return c;
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (realFirestore.query as any)(colRef, ...realConstraints);
+  }
+
+  return {
+    _isMock: true,
+    _isQuery: true,
+    path: colRef.path,
+    constraints,
+  };
+}
+
+export function serverTimestamp(): unknown {
   if (realDbInstance) {
-    return (await realFirestore.getDoc(docRef)) as DocumentSnapshot;
+    return realFirestore.serverTimestamp();
+  }
+  return Date.now();
+}
+
+export async function getDoc<T = any>(
+  docRef: DocumentReference,
+): Promise<DocumentSnapshot<T>> {
+  if (realDbInstance && !docRef._isMock) {
+    const snap = await realFirestore.getDoc(docRef as realFirestore.DocumentReference);
+    return {
+      id: snap.id,
+      exists: () => snap.exists(),
+      data: () => snap.data() as T | undefined,
+    };
   }
   const path = docRef.path || '';
   const data = mockStore.get(path);
   return {
     id: docRef.id || '',
     exists: () => Boolean(data),
-    data: () => (data ? { ...data } : undefined),
+    data: () => (data ? ({ ...data } as T) : undefined),
   };
 }
 
-// Set Document
 export async function setDoc(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  docRef: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any
+  docRef: DocumentReference,
+  data: Record<string, any>,
+  options?: { merge?: boolean },
 ): Promise<void> {
-  if (realDbInstance) {
+  if (realDbInstance && !docRef._isMock) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return await (realFirestore.setDoc as any)(docRef, data);
+    return await (realFirestore.setDoc as any)(docRef, data, options);
   }
   const path = docRef.path || '';
-  mockStore.set(path, { ...data });
+  const existing = options?.merge ? mockStore.get(path) || {} : {};
+  const updated = { ...existing, ...data };
+  mockStore.set(path, updated);
   persistStore();
   notifySubscribers(path);
-  channel?.postMessage({ type: 'set', path, data });
+  channel?.postMessage({ type: 'set', path, data: updated });
 }
 
-// Update Document
 export async function updateDoc(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  docRef: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  partial: any
+  docRef: DocumentReference,
+  partial: Record<string, any>,
 ): Promise<void> {
-  if (realDbInstance) {
+  if (realDbInstance && !docRef._isMock) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return await (realFirestore.updateDoc as any)(docRef, partial);
   }
@@ -319,13 +398,11 @@ export async function updateDoc(
   channel?.postMessage({ type: 'update', path, data: updated });
 }
 
-// Delete Document
 export async function deleteDoc(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  docRef: any
+  docRef: DocumentReference,
 ): Promise<void> {
-  if (realDbInstance) {
-    return await realFirestore.deleteDoc(docRef);
+  if (realDbInstance && !docRef._isMock) {
+    return await realFirestore.deleteDoc(docRef as realFirestore.DocumentReference);
   }
   const path = docRef.path || '';
   mockStore.delete(path);
@@ -334,17 +411,25 @@ export async function deleteDoc(
   channel?.postMessage({ type: 'delete', path });
 }
 
-// Add Document to Collection
 export async function addDoc(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  colRef: any,
-  data: Record<string, unknown>
+  colRef: CollectionReference,
+  data: Record<string, any>,
 ): Promise<DocumentReference> {
-  if (realDbInstance) {
-    return await realFirestore.addDoc(colRef, data);
+  if (realDbInstance && !colRef._isMock) {
+    const res = await realFirestore.addDoc(colRef as realFirestore.CollectionReference, data);
+    return {
+      path: res.path,
+      id: res.id,
+    };
   }
   const colPath = colRef.path || '';
-  const autoId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+  const cryptoObj = typeof window !== 'undefined' && window.crypto ? window.crypto : (globalThis as unknown as { crypto: Crypto }).crypto;
+  const randBytes = cryptoObj.getRandomValues(new Uint8Array(6));
+  let hex = '';
+  for (let i = 0; i < randBytes.length; i++) {
+    hex += randBytes[i].toString(16).padStart(2, '0');
+  }
+  const autoId = 'msg_' + Date.now() + '_' + hex;
   const docPath = `${colPath}/${autoId}`;
   mockStore.set(docPath, { ...data, id: autoId });
   persistStore();
@@ -358,16 +443,16 @@ export async function addDoc(
   };
 }
 
-// Get Docs in Collection
 export async function getDocs(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  colRef: any
+  ref: any,
 ): Promise<QuerySnapshot> {
-  if (realDbInstance) {
-    return (await realFirestore.getDocs(colRef)) as unknown as QuerySnapshot;
+  if (realDbInstance && !ref._isMock) {
+    return (await realFirestore.getDocs(ref)) as unknown as QuerySnapshot;
   }
-  const colPath = colRef.path || '';
-  const docs: QueryDocumentSnapshot[] = [];
+  const colPath = ref.path || '';
+  let docs: QueryDocumentSnapshot[] = [];
+
   for (const [p, val] of mockStore.entries()) {
     if (p.startsWith(colPath + '/')) {
       const remainder = p.substring(colPath.length + 1);
@@ -382,6 +467,15 @@ export async function getDocs(
       }
     }
   }
+
+  if (ref._isQuery && ref.constraints) {
+    for (const c of ref.constraints as QueryConstraintMock[]) {
+      if (c._type === 'where' && c.opStr === '==' && c.fieldPath) {
+        docs = docs.filter((d) => d.data()[c.fieldPath!] === c.value);
+      }
+    }
+  }
+
   return {
     empty: docs.length === 0,
     size: docs.length,
@@ -390,16 +484,14 @@ export async function getDocs(
   };
 }
 
-// Snapshot listener for doc or collection
 export function onSnapshot(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ref: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onNext: (snap: any) => void,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onError?: (err: Error) => void
+  onError?: (err: Error) => void,
 ): () => void {
-  if (realDbInstance) {
+  if (realDbInstance && !ref._isMock) {
     return realFirestore.onSnapshot(ref, onNext, onError);
   }
 
@@ -416,7 +508,7 @@ export function onSnapshot(
           data: () => (data ? { ...data } : undefined),
         });
       } else {
-        const docs: QueryDocumentSnapshot[] = [];
+        let docs: QueryDocumentSnapshot[] = [];
         for (const [p, val] of mockStore.entries()) {
           if (p.startsWith(path + '/')) {
             const remainder = p.substring(path.length + 1);
@@ -431,6 +523,15 @@ export function onSnapshot(
             }
           }
         }
+
+        if (ref._isQuery && ref.constraints) {
+          for (const c of ref.constraints as QueryConstraintMock[]) {
+            if (c._type === 'where' && c.opStr === '==' && c.fieldPath) {
+              docs = docs.filter((d) => d.data()[c.fieldPath!] === c.value);
+            }
+          }
+        }
+
         onNext({
           empty: docs.length === 0,
           size: docs.length,
@@ -443,14 +544,12 @@ export function onSnapshot(
     }
   };
 
-  // Register listener
   if (!subscribers.has(path)) {
     subscribers.set(path, new Set());
   }
   const listenerSet = subscribers.get(path)!;
   listenerSet.add(pushUpdate);
 
-  // Trigger initial snapshot synchronously or next tick
   setTimeout(pushUpdate, 0);
 
   return () => {
@@ -461,26 +560,23 @@ export function onSnapshot(
   };
 }
 
-// Auth State Listener
 export function onAuthStateChanged(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _authInstance: any,
-  callback: (user: User | null) => void
+  callback: (user: User | null) => void,
 ): () => void {
   if (realAuthInstance) {
     return realAuth.onAuthStateChanged(realAuthInstance, callback);
   }
-  // Immediately call with mock user on next microtask
   const timer = setTimeout(() => {
     callback(mockUser);
   }, 0);
   return () => clearTimeout(timer);
 }
 
-// Sign In Anonymously
 export async function signInAnonymously(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _authInstance: any
+  _authInstance: any,
 ): Promise<{ user: User }> {
   if (realAuthInstance) {
     const cred = await realAuth.signInAnonymously(realAuthInstance);
@@ -489,11 +585,10 @@ export async function signInAnonymously(
   return { user: mockUser };
 }
 
-// Sign In With Custom Token
 export async function signInWithCustomToken(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _authInstance: any,
-  token: string
+  token: string,
 ): Promise<{ user: User }> {
   if (realAuthInstance) {
     const cred = await realAuth.signInWithCustomToken(realAuthInstance, token);

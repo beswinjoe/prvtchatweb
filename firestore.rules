@@ -2,7 +2,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for room and message security
+    // =========================================================================
+    // HELPER FUNCTIONS & PREDICATES
+    // =========================================================================
+
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
     function isNotExpired(roomData) {
       return roomData.expiresAt != null && request.time.toMillis() < roomData.expiresAt;
     }
@@ -11,49 +18,190 @@ service cloud.firestore {
       return roomData.status == 'active';
     }
 
+    function isRoomActive(roomData) {
+      return roomData != null && isNotRevoked(roomData) && isNotExpired(roomData);
+    }
+
+    function getRoom(appId, roomSlug) {
+      return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug));
+    }
+
+    function roomExistsAndActive(appId, roomSlug) {
+      let r = getRoom(appId, roomSlug);
+      return r != null && isRoomActive(r.data);
+    }
+
+    function isRoomCreator(appId, roomSlug) {
+      let r = getRoom(appId, roomSlug);
+      return r != null && r.data.creatorUid == request.auth.uid;
+    }
+
     function isValidLifetime(roomData) {
       // Hard server-side enforcement: max lifetime cannot exceed 7 days (604,800,000 ms) from creation
-      return roomData.expiresAt <= roomData.createdAt + (7 * 24 * 60 * 60 * 1000);
+      let maxLifetime = 7 * 24 * 60 * 60 * 1000;
+      return roomData.expiresAt is number
+          && roomData.createdAt is number
+          && roomData.expiresAt > roomData.createdAt
+          && roomData.expiresAt <= (roomData.createdAt + maxLifetime);
     }
 
-    // Room Document Rules
+    // =========================================================================
+    // ROOM DOCUMENTS: /artifacts/{appId}/public/data/rooms/{roomSlug}
+    // =========================================================================
     match /artifacts/{appId}/public/data/rooms/{roomSlug} {
-      // Allow read only if room exists, not revoked, and not expired
-      allow read: if true;
+      // Read allowed only if authenticated and room is currently active & unexpired
+      allow read: if isAuthenticated() && isRoomActive(resource.data);
 
-      // Allow room creation with valid 7-day bounds and active status
-      allow create: if request.resource.data.status == 'active'
+      // Create allowed only with active status, valid 7-day bounds, and authenticated creator
+      allow create: if isAuthenticated()
+                    && request.resource.data.status == 'active'
                     && isValidLifetime(request.resource.data)
-                    && request.resource.data.createdAt <= request.time.toMillis();
+                    && request.resource.data.createdAt is number
+                    && request.resource.data.createdAt <= request.time.toMillis()
+                    && request.resource.data.creatorUid == request.auth.uid
+                    && request.resource.data.slug == roomSlug
+                    && request.resource.data.keyCommitment is string
+                    && request.resource.data.keyCommitment.size() > 0
+                    && request.resource.data.keyCommitment.size() <= 128;
 
-      // Allow update for revoking/destroying room or updating expiry
-      allow update: if (request.resource.data.status == 'revoked' || request.resource.data.status == 'expired')
-                    || (resource.data.status == 'active' && isNotExpired(resource.data));
+      // Update allowed ONLY for revoking or expiring an active room
+      // Cannot alter creator, creation time, keyCommitment, or extend expiration past max bounds
+      allow update: if isAuthenticated()
+                    && resource.data.status == 'active'
+                    && isNotExpired(resource.data)
+                    && (request.resource.data.status == 'revoked' || request.resource.data.status == 'expired')
+                    && request.resource.data.revokedBy == request.auth.uid
+                    && request.resource.data.creatorUid == resource.data.creatorUid
+                    && request.resource.data.createdAt == resource.data.createdAt
+                    && request.resource.data.keyCommitment == resource.data.keyCommitment
+                    && request.resource.data.slug == resource.data.slug;
 
-      // Allow room deletion
-      allow delete: if true;
+      // Delete allowed only by room creator or for expired/revoked rooms
+      allow delete: if isAuthenticated()
+                    && (resource.data.creatorUid == request.auth.uid
+                        || resource.data.status == 'revoked'
+                        || !isNotExpired(resource.data));
+
+      // -----------------------------------------------------------------------
+      // SUBCOLLECTIONS (Scoped per room)
+      // -----------------------------------------------------------------------
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && roomExistsAndActive(appId, roomSlug);
+
+        allow create: if isAuthenticated()
+                      && roomExistsAndActive(appId, roomSlug)
+                      && request.resource.data.senderUid == request.auth.uid
+                      && request.resource.data.ciphertext is string
+                      && request.resource.data.ciphertext.size() > 0
+                      && request.resource.data.ciphertext.size() <= 1048576
+                      && request.resource.data.iv is string
+                      && request.resource.data.iv.size() >= 16
+                      && request.resource.data.iv.size() <= 64
+                      && request.resource.data.createdAt is number
+                      && request.resource.data.createdAt <= request.time.toMillis();
+
+        allow update: if isAuthenticated()
+                      && roomExistsAndActive(appId, roomSlug)
+                      && (
+                        // Soft delete by message sender or room creator
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy'])
+                         && (resource.data.senderUid == request.auth.uid || isRoomCreator(appId, roomSlug)))
+                        ||
+                        // Reaction toggling only
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+                      )
+                      && request.resource.data.ciphertext == resource.data.ciphertext
+                      && request.resource.data.iv == resource.data.iv
+                      && request.resource.data.senderUid == resource.data.senderUid
+                      && request.resource.data.createdAt == resource.data.createdAt;
+
+        allow delete: if isAuthenticated()
+                      && (resource.data.senderUid == request.auth.uid
+                          || isRoomCreator(appId, roomSlug)
+                          || !roomExistsAndActive(appId, roomSlug));
+      }
+
+      match /presence/{presenceId} {
+        allow read: if isAuthenticated() && roomExistsAndActive(appId, roomSlug);
+
+        allow write: if isAuthenticated()
+                     && roomExistsAndActive(appId, roomSlug)
+                     && request.resource.data.uid == request.auth.uid
+                     && request.resource.data.lastSeen is number
+                     && request.resource.data.lastSeen <= request.time.toMillis();
+
+        allow delete: if isAuthenticated()
+                      && (resource.data.uid == request.auth.uid
+                          || isRoomCreator(appId, roomSlug)
+                          || !roomExistsAndActive(appId, roomSlug));
+      }
     }
 
-    // Encrypted Messages Subcollection Rules
+    // =========================================================================
+    // ROOT MESSAGES COLLECTION: /artifacts/{appId}/public/data/messages/{messageId}
+    // =========================================================================
     match /artifacts/{appId}/public/data/messages/{messageId} {
-      // Read allowed during active session
-      allow read: if true;
+      // Read allowed only if authenticated and associated room is active
+      allow read: if isAuthenticated()
+                  && resource.data.roomSlug is string
+                  && roomExistsAndActive(appId, resource.data.roomSlug);
 
-      // Message write allowed ONLY if room is currently active and not expired
-      allow create: if request.resource.data.ciphertext is string
+      // Create allowed only if authenticated, room is active, sender matches auth, and payload is bounded
+      allow create: if isAuthenticated()
+                    && request.resource.data.roomSlug is string
+                    && roomExistsAndActive(appId, request.resource.data.roomSlug)
+                    && request.resource.data.senderUid == request.auth.uid
+                    && request.resource.data.ciphertext is string
+                    && request.resource.data.ciphertext.size() > 0
+                    && request.resource.data.ciphertext.size() <= 1048576
                     && request.resource.data.iv is string
+                    && request.resource.data.iv.size() >= 16
+                    && request.resource.data.iv.size() <= 64
+                    && request.resource.data.createdAt is number
                     && request.resource.data.createdAt <= request.time.toMillis();
 
-      // Message update for reactions or marking soft delete
-      allow update: if true;
+      // Update allowed ONLY for soft deletion by sender or reaction toggling
+      // Message ciphertext, IV, senderUid, createdAt, and roomSlug CANNOT be modified
+      allow update: if isAuthenticated()
+                    && roomExistsAndActive(appId, resource.data.roomSlug)
+                    && (
+                      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy'])
+                       && (resource.data.senderUid == request.auth.uid || isRoomCreator(appId, resource.data.roomSlug)))
+                      ||
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+                    )
+                    && request.resource.data.ciphertext == resource.data.ciphertext
+                    && request.resource.data.iv == resource.data.iv
+                    && request.resource.data.senderUid == resource.data.senderUid
+                    && request.resource.data.createdAt == resource.data.createdAt
+                    && request.resource.data.roomSlug == resource.data.roomSlug;
 
-      // Allow deletion upon room destruction/purge
-      allow delete: if true;
+      // Delete allowed only by sender, room creator, or if room is revoked/expired
+      allow delete: if isAuthenticated()
+                    && (resource.data.senderUid == request.auth.uid
+                        || isRoomCreator(appId, resource.data.roomSlug)
+                        || !roomExistsAndActive(appId, resource.data.roomSlug));
     }
 
-    // Presence Subcollection Rules
+    // =========================================================================
+    // ROOT PRESENCE COLLECTION: /artifacts/{appId}/public/data/presence/{presenceId}
+    // =========================================================================
     match /artifacts/{appId}/public/data/presence/{presenceId} {
-      allow read, write, delete: if true;
+      allow read: if isAuthenticated()
+                  && resource.data.roomSlug is string
+                  && roomExistsAndActive(appId, resource.data.roomSlug);
+
+      allow write: if isAuthenticated()
+                   && request.resource.data.roomSlug is string
+                   && roomExistsAndActive(appId, request.resource.data.roomSlug)
+                   && request.resource.data.uid == request.auth.uid
+                   && request.resource.data.lastSeen is number
+                   && request.resource.data.lastSeen <= request.time.toMillis();
+
+      allow delete: if isAuthenticated()
+                    && (resource.data.uid == request.auth.uid
+                        || isRoomCreator(appId, resource.data.roomSlug)
+                        || !roomExistsAndActive(appId, resource.data.roomSlug));
     }
   }
 }

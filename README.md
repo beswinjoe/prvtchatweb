@@ -1,30 +1,31 @@
 # PRVTCHAT — Ephemeral Zero-Knowledge E2EE Messaging
 
-> **Private conversations. Nothing left behind.**  
-> Create an encrypted chat, share your link, and let it disappear when you're done.
+> **Your words. Your privacy. One clear picture.**  
+> Zero-knowledge end-to-end encrypted messaging with strict ephemeral lifecycles and automatic shredding.
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/beswinjoe/prvtchatweb)
-[![Tests](https://img.shields.io/badge/tests-13%20passing-brightgreen.svg)](https://github.com/beswinjoe/prvtchatweb)
+[![Security Audit](https://img.shields.io/badge/audit-passed-brightgreen.svg)](docs/SECURITY_AUDIT.md)
 [![Encryption](https://img.shields.io/badge/cipher-AES--256--GCM-indigo.svg)](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/encrypt)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ---
 
-## 🔒 Cryptographic Architecture & Guarantees
+## 🔒 Security Architecture & Guarantees
 
 1. **Client CSPRNG 256-Bit Key Generation**:
-   The browser generates cryptographically random 256-bit AES-GCM keys directly in volatile RAM using `window.crypto.subtle`.
-2. **RFC 3986 Fragment Isolation (`#key=...`)**:
-   The decryption secret is placed exclusively in the URL hash fragment (`#key=...`). Under RFC 3986 §3.5, browsers **never** transmit URL fragments to HTTP servers, web proxies, or database relays.
-3. **96-Bit Initialization Vector + 128-Bit GCM Authentication Tag**:
-   Every message, image, and emoji reaction is sealed with an individual 96-bit IV and authenticated with a 128-bit integrity tag before leaving your device.
-4. **Authoritative Expiration & Instant Shredding**:
-   - **4 Expiration Choices**: 2 hours, 24 hours (default), 3 days, or 7 days (maximum ceiling).
-   - **Strict 7-Day Ceiling**: Clamped authoritatively to prevent frontend manipulation.
-   - **Instant Destruction**: Any participant can click **Destroy Chat** at any moment to invalidate access, purge all message documents, encrypted attachments, and presence records from the database.
-5. **Zero-Knowledge Cloud Relay & Dual-Mode Adaptability**:
-   - **Live Production**: Connects to Firebase Firestore & Auth using security rules that block access to expired or revoked rooms.
-   - **Local / Standalone**: Automatically switches to an in-memory cross-tab [`BroadcastChannel`](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel) relay for instant offline multi-tab testing.
+   The browser generates cryptographically random 256-bit AES-GCM keys directly in volatile RAM using native `window.crypto.subtle`. Keys never touch disk unencrypted.
+2. **RFC 3986 Hash Fragment Isolation (`#key=...`)**:
+   The decryption secret is placed exclusively in the URL hash fragment (`#key=...`). Under RFC 3986 §3.5, browsers **never** transmit hash fragments in HTTP request headers. Firebase servers and network intermediaries never observe keys.
+3. **Unique 96-Bit IV + 128-Bit GCM Authentication Tag**:
+   Every message, encrypted image, and reaction is sealed with a fresh, unique 96-bit random IV and verified with a 128-bit integrity tag. Modified or replayed ciphertexts are rejected.
+4. **Authoritative 7-Day Ceilings & Trusted Backend Shredding**:
+   - **4 Lifetime Options:** 2 hours, 24 hours (default), 3 days, or 7 days (maximum ceiling).
+   - **Server-Side Enforcement:** Firestore security rules verify server time (`request.time.toMillis() < room.expiresAt`) and reject operations on expired/revoked rooms.
+   - **Firebase Cloud Functions:** A scheduled background job (`scheduledRoomCleanup`) sweeps the database every 15 minutes, permanently deleting expired documents even if all clients close their browsers.
+5. **Scoped Database Queries**:
+   Client listeners and purge routines query documents filtered strictly by `where('roomSlug', '==', activeSlug)`, preventing any cross-conversation data exposure.
+6. **MIME Integrity & XSS Defense**:
+   Image attachments undergo client-side magic byte inspection (JPEG, PNG, WebP, GIF) before compression and encryption. SVG, HTML, and XML payloads are strictly rejected.
 
 ---
 
@@ -39,14 +40,15 @@ npm install
 ```bash
 npm test
 ```
-Executes 13 unit tests verifying key generation, AES-256-GCM encryption/decryption roundtrip, 1-bit tamper rejection, foreign key rejection, SHA-256 commitments, and 7-day expiration calculations.
+Executes comprehensive unit tests verifying AES-256-GCM encryption/decryption, tamper resistance, foreign key rejection, SHA-256 commitments, image magic byte validation, collision-resistant slug generation, and 7-day expiration calculations.
 
 ### 3. Start Development Server
 ```bash
 npm run dev
 ```
-
 Open [http://localhost:5174/](http://localhost:5174/) in your browser.
+
+In development, if live Firebase credentials are not provided in `.env`, PRVTCHAT automatically uses an in-memory cross-tab [`BroadcastChannel`](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel) relay for instant offline multi-tab testing.
 
 ### 4. Build for Production
 ```bash
@@ -55,48 +57,48 @@ npm run build
 
 ---
 
-## 📁 Project Structure
+## 📁 Repository Layout
 
 ```text
 prvtchatweb/
-├── firestore.rules             # Firestore security rules enforcing 7-day lifetime
+├── firestore.rules              # Restrictive Firestore security rules
+├── firestore.indexes.json       # Composite query index definitions
+├── firebase.json                # Firebase hosting, rules, and emulators config
+├── functions/                   # Backend Cloud Functions (Node.js 20 + TypeScript)
+│   ├── src/index.ts             # Scheduled cleanup job and callable shred endpoint
+│   ├── src/cleanup.ts           # Resilient paginated batch document shredding
+│   └── package.json
+├── docs/
+│   ├── SECURITY_AUDIT.md        # Complete vulnerability register & threat model
+│   └── DEPLOYMENT.md            # Production deployment instructions
 ├── src/
-│   ├── types/
-│   │   └── index.ts            # Central TypeScript definitions
+│   ├── types/index.ts           # Central TypeScript definitions
 │   ├── lib/
-│   │   ├── crypto.ts           # Web Crypto API layer (AES-256-GCM, SHA-256)
-│   │   ├── crypto.test.ts      # Unit tests for Web Crypto primitives
-│   │   ├── expiry.ts           # Expiration calculation & 7-day clamping logic
-│   │   ├── expiry.test.ts      # Unit tests for TTL and revocation rules
-│   │   ├── firebase.ts         # Dual-mode Firebase / BroadcastChannel relay
-│   │   ├── image.ts            # Client-side canvas image compression
-│   │   ├── constants.ts        # 2h, 24h, 3d, 7d presets and configuration
-│   │   └── utils.ts            # Slug sanitization, validation, avatars
+│   │   ├── crypto.ts            # Web Crypto AES-256-GCM + SHA-256 layer
+│   │   ├── crypto.test.ts       # Cryptographic unit tests
+│   │   ├── expiry.ts            # Authoritative 7-day clamping & time formatting
+│   │   ├── expiry.test.ts       # Expiration logic tests
+│   │   ├── firebase.ts          # Centralized Firebase initialization & adapters
+│   │   ├── image.ts             # Magic bytes validation & canvas compression
+│   │   ├── image.test.ts        # Image MIME & security tests
+│   │   ├── utils.ts             # Secure slug generation & helpers
+│   │   └── utils.test.ts        # Slug generation & utility tests
 │   ├── components/
-│   │   ├── Navbar.tsx          # Sticky top bar with countdown & Destroy action
-│   │   ├── LandingView.tsx     # Clean, memorable homepage hero
-│   │   ├── ChatView.tsx        # Focused encrypted conversation workspace
-│   │   ├── ExpiredView.tsx     # Clean destruction / tombstone screen
-│   │   ├── ErrorBoundary.tsx   # React error boundary for runtime resilience
-│   │   └── modals/
-│   │       ├── CreateChatModal.tsx # Compact room creation modal
-│   │       ├── JoinModal.tsx       # Link / credential join modal
-│   │       ├── ShareModal.tsx      # Share link & out-of-band fingerprint
-│   │       ├── RevokeModal.tsx     # Destruction confirmation dialog
-│   │       ├── SecurityModal.tsx   # Cryptographic specification & threat model
-│   │       └── LightboxModal.tsx   # In-memory decrypted image viewer
-│   ├── App.tsx                 # Core application coordinator & state
-│   ├── main.tsx                # React root mount with ErrorBoundary
-│   └── index.css               # Midnight gradient atmospheric design tokens
-├── index.html                  # SEO metadata, Plus Jakarta Sans & JetBrains Mono
-├── vite.config.ts              # Vite + Tailwind v4 build configuration
+│   │   ├── Navbar.tsx           # Seamless header with countdown & Destroy action
+│   │   ├── LandingView.tsx      # Calm sky-blue hero landing page
+│   │   ├── ChatView.tsx         # Encrypted messaging stream & attachments
+│   │   ├── ExpiredView.tsx      # Post-destruction tombstone screen
+│   │   ├── ErrorBoundary.tsx    # Sanitized React error boundary
+│   │   └── modals/              # Create, Join, Share, Revoke, and Security modals
+│   ├── App.tsx                  # Root application coordinator
+│   ├── main.tsx                 # Root entry point
+│   └── index.css                # Calm sky-blue design system & utility classes
 └── package.json
 ```
 
 ---
 
-## ⚠️ Threat Model & Limitations
+## 📖 Documentation
 
-While PRVTCHAT provides zero-knowledge cryptographic privacy against servers, intermediaries, and database administrators, it is bound by the **analog hole**:
-- Any participant who took screenshots, copied plaintext, or downloaded attachments while the room was active retains those copies locally.
-- Server destruction guarantees that stored database records, encrypted payloads, and presence heartbeats are irrevocably purged.
+- [**Security Audit Report**](docs/SECURITY_AUDIT.md) — Detailed vulnerability analyses, CVSS ratings, remediations, and threat model.
+- [**Deployment Guide**](docs/DEPLOYMENT.md) — Step-by-step production rollout for Firebase, Firestore, Cloud Functions, and environment configuration.

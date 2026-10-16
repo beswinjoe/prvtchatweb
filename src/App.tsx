@@ -27,10 +27,12 @@ import {
   deleteDoc,
   doc,
   type DocumentSnapshot,
+  firebaseConfigError,
   getDoc,
   getDocs,
   onAuthStateChanged,
   onSnapshot,
+  query,
   type QueryDocumentSnapshot,
   type QuerySnapshot,
   setDoc,
@@ -38,9 +40,10 @@ import {
   signInWithCustomToken,
   updateDoc,
   type User,
+  where,
 } from './lib/firebase';
 import { processAndCompressImage } from './lib/image';
-import { sanitizeSlug, validateSlug } from './lib/utils';
+import { generateSecureRoomSlug, sanitizeSlug, validateSlug } from './lib/utils';
 import type {
   ActivePeer,
   AppView,
@@ -216,21 +219,19 @@ export default function App() {
 
         // 2. Permanently delete all stored message records for this room
         const messagesCol = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
-        const msgSnap = await getDocs(messagesCol);
+        const messagesQuery = query(messagesCol, where('roomSlug', '==', slugToPurge));
+        const msgSnap = await getDocs(messagesQuery);
         const deletePromises: Promise<void>[] = [];
         msgSnap.forEach((docSnap: QueryDocumentSnapshot) => {
-          if (docSnap.data().roomSlug === slugToPurge) {
-            deletePromises.push(deleteDoc(docSnap.ref));
-          }
+          deletePromises.push(deleteDoc(docSnap.ref));
         });
 
         // 3. Delete presence heartbeat records
         const presenceCol = collection(db, 'artifacts', appId, 'public', 'data', 'presence');
-        const presSnap = await getDocs(presenceCol);
+        const presenceQuery = query(presenceCol, where('roomSlug', '==', slugToPurge));
+        const presSnap = await getDocs(presenceQuery);
         presSnap.forEach((docSnap: QueryDocumentSnapshot) => {
-          if (docSnap.data().roomSlug === slugToPurge) {
-            deletePromises.push(deleteDoc(docSnap.ref));
-          }
+          deletePromises.push(deleteDoc(docSnap.ref));
         });
 
         await Promise.all(deletePromises);
@@ -467,16 +468,18 @@ export default function App() {
       }
     );
 
-    // 2. Listen for encrypted messages
-    const unsubMessages = onSnapshot(
+    // 2. Listen for encrypted messages strictly for this room
+    const messagesQuery = query(
       messagesCol,
+      where('roomSlug', '==', activeSlug)
+    );
+    const unsubMessages = onSnapshot(
+      messagesQuery,
       (snapshot: QuerySnapshot) => {
         const roomMsgs: EncryptedMessage[] = [];
         snapshot.forEach((docSnap: QueryDocumentSnapshot) => {
           const data = docSnap.data() as Omit<EncryptedMessage, 'id'>;
-          if (data.roomSlug === activeSlug) {
-            roomMsgs.push({ id: docSnap.id, ...data });
-          }
+          roomMsgs.push({ id: docSnap.id, ...data });
         });
         roomMsgs.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
         setEncryptedMessages(roomMsgs);
@@ -486,16 +489,18 @@ export default function App() {
       }
     );
 
-    // 3. Listen for presence records
-    const unsubPresence = onSnapshot(
+    // 3. Listen for presence records strictly for this room
+    const presenceQuery = query(
       presenceCol,
+      where('roomSlug', '==', activeSlug)
+    );
+    const unsubPresence = onSnapshot(
+      presenceQuery,
       (snapshot: QuerySnapshot) => {
         const list: PresenceRecord[] = [];
         snapshot.forEach((docSnap: QueryDocumentSnapshot) => {
           const data = docSnap.data() as Omit<PresenceRecord, 'id'>;
-          if (data.roomSlug === activeSlug) {
-            list.push({ id: docSnap.id, ...data });
-          }
+          list.push({ id: docSnap.id, ...data });
         });
         setPresenceList(list);
       },
@@ -693,9 +698,8 @@ export default function App() {
 
     let finalSlug = slugInput.trim();
     if (!finalSlug) {
-      // Auto-generate high-entropy readable slug if empty
-      const randomSuffix = Math.floor(100 + Math.random() * 900);
-      finalSlug = `chat-${randomSuffix}`;
+      // Auto-generate high-entropy collision-resistant slug
+      finalSlug = generateSecureRoomSlug();
     }
 
     const cleanedSlug = sanitizeSlug(finalSlug);
@@ -1047,6 +1051,33 @@ export default function App() {
     setCreateError('');
     setShowCreateModal(true);
   };
+
+  if (firebaseConfigError) {
+    return (
+      <div className="min-h-screen bg-[#5B9EEA] text-[#0B132B] flex items-center justify-center p-6">
+        <div className="max-w-lg w-full bg-white border border-black/10 rounded-3xl p-8 space-y-6 shadow-2xl text-left">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
+            <span className="font-bold text-xl">!</span>
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-[#0B132B] tracking-tight">Firebase Configuration Required</h2>
+            <p className="text-xs text-zinc-600 leading-relaxed">
+              PRVTCHAT is running in production mode, but live Firebase environment variables are not configured. To enable zero-knowledge multi-device encrypted chat, configure the following variables in your environment:
+            </p>
+          </div>
+          <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 font-mono text-[11px] text-zinc-800 space-y-1 overflow-x-auto">
+            <div>VITE_FIREBASE_API_KEY=your_api_key</div>
+            <div>VITE_FIREBASE_PROJECT_ID=your_project_id</div>
+            <div>VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com</div>
+            <div>VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com</div>
+          </div>
+          <p className="text-[11px] text-zinc-500">
+            For local offline testing, set <code className="font-mono text-zinc-800">VITE_USE_MOCK_RELAY=true</code> in your <code className="font-mono text-zinc-800">.env</code> file.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

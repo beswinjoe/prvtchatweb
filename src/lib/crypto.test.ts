@@ -14,7 +14,6 @@ describe('Web Crypto E2EE Primitives', () => {
     const { cryptoKey, keyString } = await generateRoomKey();
     expect(cryptoKey).toBeDefined();
     expect(cryptoKey.algorithm.name).toBe('AES-GCM');
-    // 256 bits = 32 bytes. In base64url without padding: 43 characters
     const buffer = base64UrlToBuffer(keyString);
     expect(buffer.byteLength).toBe(32);
   });
@@ -24,6 +23,17 @@ describe('Web Crypto E2EE Primitives', () => {
     const imported = await importRoomKey(keyString);
     expect(imported).toBeDefined();
     expect(imported.algorithm.name).toBe('AES-GCM');
+  });
+
+  it('supports non-extractable session keys for hardened memory isolation', async () => {
+    const { keyString } = await generateRoomKey();
+    const nonExtractable = await importRoomKey(keyString, false);
+    expect(nonExtractable.extractable).toBe(false);
+
+    // Crypto operations still work seamlessly
+    const packet = await encryptPayload(nonExtractable, { test: 'secure' });
+    const decrypted = await decryptPayload<{ test: string }>(nonExtractable, packet.iv, packet.ciphertext);
+    expect(decrypted.test).toBe('secure');
   });
 
   it('encrypts and decrypts payloads roundtrip accurately', async () => {
@@ -44,11 +54,23 @@ describe('Web Crypto E2EE Primitives', () => {
     const decrypted = await decryptPayload<typeof sampleMessage>(
       cryptoKey,
       packet.iv,
-      packet.ciphertext
+      packet.ciphertext,
     );
     expect(decrypted.text).toBe(sampleMessage.text);
     expect(decrypted.senderName).toBe(sampleMessage.senderName);
     expect(decrypted.sentAt).toBe(sampleMessage.sentAt);
+  });
+
+  it('generates fresh, unique 96-bit IVs for every encryption operation under same key', async () => {
+    const { cryptoKey } = await generateRoomKey();
+    const packet1 = await encryptPayload(cryptoKey, { seq: 1 });
+    const packet2 = await encryptPayload(cryptoKey, { seq: 2 });
+    const packet3 = await encryptPayload(cryptoKey, { seq: 3 });
+
+    expect(packet1.iv).not.toBe(packet2.iv);
+    expect(packet2.iv).not.toBe(packet3.iv);
+    expect(base64UrlToBuffer(packet1.iv).byteLength).toBe(12);
+    expect(base64UrlToBuffer(packet2.iv).byteLength).toBe(12);
   });
 
   it('rejects tampered ciphertext with an authentication error', async () => {
@@ -61,8 +83,8 @@ describe('Web Crypto E2EE Primitives', () => {
     const tampered = bufferToBase64Url(rawCipher);
 
     await expect(
-      decryptPayload(cryptoKey, packet.iv, tampered)
-    ).rejects.toThrow();
+      decryptPayload(cryptoKey, packet.iv, tampered),
+    ).rejects.toThrow(/Ciphertext integrity check failed/);
   });
 
   it('rejects decryption when using an incorrect key', async () => {
@@ -72,8 +94,34 @@ describe('Web Crypto E2EE Primitives', () => {
     const packet = await encryptPayload(keyA, { text: 'Secret' });
 
     await expect(
-      decryptPayload(keyB, packet.iv, packet.ciphertext)
-    ).rejects.toThrow();
+      decryptPayload(keyB, packet.iv, packet.ciphertext),
+    ).rejects.toThrow(/Ciphertext integrity check failed/);
+  });
+
+  it('rejects invalid or non-96-bit IVs', async () => {
+    const { cryptoKey } = await generateRoomKey();
+    const packet = await encryptPayload(cryptoKey, { text: 'Secret' });
+
+    // 8-byte IV instead of 12-byte IV
+    const invalidIv = bufferToBase64Url(new Uint8Array(8));
+    await expect(
+      decryptPayload(cryptoKey, invalidIv, packet.ciphertext),
+    ).rejects.toThrow(/Invalid IV length/);
+  });
+
+  it('rejects truncated ciphertext shorter than 128-bit authentication tag', async () => {
+    const { cryptoKey } = await generateRoomKey();
+    const shortCipher = bufferToBase64Url(new Uint8Array(8));
+    const validIv = bufferToBase64Url(new Uint8Array(12));
+
+    await expect(
+      decryptPayload(cryptoKey, validIv, shortCipher),
+    ).rejects.toThrow(/Ciphertext too short/);
+  });
+
+  it('rejects invalid key length on import', async () => {
+    const shortKey = bufferToBase64Url(new Uint8Array(16)); // 128-bit key
+    await expect(importRoomKey(shortKey)).rejects.toThrow(/Invalid key length/);
   });
 
   it('computes consistent zero-knowledge SHA-256 key commitments', async () => {
