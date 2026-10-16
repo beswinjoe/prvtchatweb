@@ -31,7 +31,6 @@ import {
   type DocumentSnapshot,
   firebaseConfigError,
   getDoc,
-  getDocs,
   onAuthStateChanged,
   onSnapshot,
   query,
