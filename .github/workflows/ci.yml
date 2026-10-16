@@ -31,6 +31,17 @@ jobs:
       - name: Install Cloud Functions Dependencies
         run: npm --prefix functions ci
 
+      - name: Cache Firebase Emulator Binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}-firebase-emulators
+          restore-keys: |
+            ${{ runner.os }}-firebase-emulators
+
+      - name: Pre-download Firestore Emulator
+        run: npx firebase setup:emulators:firestore
+
       - name: Run Linter
         run: npm run lint
 

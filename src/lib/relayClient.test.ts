@@ -1,30 +1,55 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import WebSocket, { type WebSocketServer } from 'ws';
 import { createRelayServer } from '../../server/relay';
 import { RelayClient } from './relayClient';
 import type { Server } from 'node:http';
-import type { WebSocketServer } from 'ws';
+
+// Ensure WebSocket is available in headless Node.js test runners
+if (typeof globalThis.WebSocket === 'undefined') {
+  (globalThis as any).WebSocket = WebSocket;
+}
+
+async function waitFor(condition: () => boolean, timeoutMs = 4000): Promise<void> {
+  const start = Date.now();
+  while (!condition()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`Timed out after ${timeoutMs}ms waiting for condition.`);
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
 
 describe('RelayClient integration with RAM-Only MemoryRelay', () => {
   let server: Server;
   let wss: WebSocketServer;
   const TEST_PORT = 4999;
-  const RELAY_WS_URL = `ws://localhost:${TEST_PORT}`;
+  const RELAY_WS_URL = `ws://127.0.0.1:${TEST_PORT}`;
+
+  let clientAlice: RelayClient | null = null;
+  let clientBob: RelayClient | null = null;
 
   beforeAll(async () => {
     const started = createRelayServer(TEST_PORT);
     server = started.server;
     wss = started.wss;
-    await new Promise((r) => setTimeout(r, 100));
+    if (!server.listening) {
+      await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+    }
   });
 
   afterAll(async () => {
-    wss.close();
-    server.close();
+    clientAlice?.disconnect();
+    clientBob?.disconnect();
+    await new Promise<void>((resolve) => {
+      wss.close(() => {
+        server.close(() => resolve());
+      });
+    });
   });
 
   it('connects, creates room, exchanges message and revokes in RAM', async () => {
-    const clientAlice = new RelayClient(RELAY_WS_URL);
-    const clientBob = new RelayClient(RELAY_WS_URL);
+    clientAlice = new RelayClient(RELAY_WS_URL);
+    clientBob = new RelayClient(RELAY_WS_URL);
 
     const now = Date.now();
 
@@ -63,8 +88,7 @@ describe('RelayClient integration with RAM-Only MemoryRelay', () => {
       deleted: false,
     });
 
-    await new Promise((r) => setTimeout(r, 150));
-    expect(receivedMessages.length).toBe(1);
+    await waitFor(() => receivedMessages.length >= 1);
     expect(receivedMessages[0].ciphertext).toBe('SecretCiphertextPayload');
 
     // 4. Bob toggles reaction, Alice receives it
@@ -80,8 +104,7 @@ describe('RelayClient integration with RAM-Only MemoryRelay', () => {
       reactionsUpdatedAt: now + 200,
     });
 
-    await new Promise((r) => setTimeout(r, 150));
-    expect(receivedReactions.length).toBe(1);
+    await waitFor(() => receivedReactions.length >= 1);
     expect(receivedReactions[0].reactionsCiphertext).toBe('EncryptedReactionData');
 
     // 5. Alice revokes room, Bob receives destroy notification
@@ -93,10 +116,7 @@ describe('RelayClient integration with RAM-Only MemoryRelay', () => {
     });
 
     clientAlice.revokeRoom();
-    await new Promise((r) => setTimeout(r, 150));
+    await waitFor(() => bobReceivedDestroy);
     expect(bobReceivedDestroy).toBe(true);
-
-    clientAlice.disconnect();
-    clientBob.disconnect();
   });
 });

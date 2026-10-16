@@ -479,6 +479,6 @@ export function createRelayServer(port: number = 4040): { server: http.Server; w
     });
   });
 
-  server.listen(port);
+  server.listen(port, '0.0.0.0');
   return { server, wss, relay };
 }
