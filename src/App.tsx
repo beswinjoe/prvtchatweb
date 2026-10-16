@@ -116,6 +116,7 @@ export default function App() {
   const [joinSlugManual, setJoinSlugManual] = useState('');
   const [joinKeyManual, setJoinKeyManual] = useState('');
   const [joinError, setJoinError] = useState('');
+  const [roomActionError, setRoomActionError] = useState('');
 
   // Active Conversation State
   const [roomData, setRoomData] = useState<RoomData | null>(null);
@@ -1101,8 +1102,15 @@ export default function App() {
   }, [user, currentView, activeSlug]);
 
   const handleLeaveRoom = useCallback(async () => {
+    setRoomActionError('');
     if (activeSlug && user) {
-      await leaveRoomAuthoritative(activeSlug, user);
+      const leaveResult = await leaveRoomAuthoritative(activeSlug, user);
+      if (!leaveResult.success) {
+        const error = leaveResult.error || 'The trusted server could not confirm that you left the room. Please retry.';
+        setRoomActionError(error);
+        return { success: false, error };
+      }
+
       const presenceDocId = `${activeSlug}_${user.uid}`;
       const presenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', presenceDocId);
       deleteDoc(presenceRef).catch(() => {});
@@ -1192,6 +1200,21 @@ export default function App() {
         onOpenRevokeConfirm={() => setShowRevokeConfirm(true)}
         onOpenSecurityModal={() => setShowSecurityModal(true)}
       />
+
+      {roomActionError && currentView === 'chat' && (
+        <div role="alert" className="mx-4 mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          <div className="flex items-start justify-between gap-3">
+            <span>{roomActionError}</span>
+            <button
+              type="button"
+              onClick={() => setRoomActionError('')}
+              className="shrink-0 font-semibold underline underline-offset-2"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Views */}
       {currentView === 'landing' && (
