@@ -25,6 +25,7 @@ import {
   auth,
   collection,
   db,
+  callCloudFunction,
   deleteDoc,
   doc,
   type DocumentSnapshot,
@@ -231,31 +232,20 @@ export default function App() {
         });
         accessRevoked = true;
 
-        // 2. Permanently delete all stored message records for this room
-        const messagesCol = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
-        const messagesQuery = query(messagesCol, where('roomSlug', '==', slugToPurge));
-        const msgSnap = await getDocs(messagesQuery);
-        const deletePromises: Promise<void>[] = [];
-        msgSnap.forEach((docSnap: QueryDocumentSnapshot) => {
-          deletePromises.push(deleteDoc(docSnap.ref));
-        });
+        // 2. Ask the trusted server to shred all room data. Client rules intentionally
+        // forbid deleting membership records or changing authoritative membership state.
+        const cleanupResult = await callCloudFunction<
+          { appId: string; roomSlug: string },
+          { success: boolean; messagesDeleted?: number; presenceDeleted?: number; membersDeleted?: number }
+        >('cleanupRoom', { appId, roomSlug: slugToPurge });
 
-        // 3. Delete presence heartbeat records
-        const presenceCol = collection(db, 'artifacts', appId, 'public', 'data', 'presence');
-        const presenceQuery = query(presenceCol, where('roomSlug', '==', slugToPurge));
-        const presSnap = await getDocs(presenceQuery);
-        presSnap.forEach((docSnap: QueryDocumentSnapshot) => {
-          deletePromises.push(deleteDoc(docSnap.ref));
-        });
-
-        // 4. Delete room members subcollection records
-        const membersCol = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', slugToPurge, 'members');
-        const memSnap = await getDocs(membersCol);
-        memSnap.forEach((docSnap: QueryDocumentSnapshot) => {
-          deletePromises.push(deleteDoc(docSnap.ref));
-        });
-
-        await Promise.all(deletePromises);
+        if (!cleanupResult.success || !cleanupResult.data?.success) {
+          // The room is already revoked. The scheduled server cleanup will retry if needed.
+          console.warn(
+            'Room access was revoked; immediate server cleanup was not confirmed. Scheduled cleanup will retry.',
+            cleanupResult.error || 'No cleanup confirmation returned.',
+          );
+        }
       } catch (err) {
         console.error('Purge error:', err);
       } finally {
