@@ -63,9 +63,16 @@ export async function joinRoomAuthoritative(
         alreadyMember: cfRes.data.alreadyMember,
       };
     }
+    // Never bypass server-side capacity/membership enforcement in a real Firebase database.
+    return {
+      success: false,
+      role: 'member',
+      memberCount: 0,
+      error: cfRes.error || 'Trusted room join service is unavailable. Please retry.',
+    };
   }
 
-  // 2. Fallback / offline / direct Firestore transaction
+  // Mock database only: deterministic transaction path for unit tests and local simulation.
   try {
     const roomRef = doc(database, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug);
     const memberRef = doc(database, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug, 'members', user.uid);
@@ -161,9 +168,13 @@ export async function leaveRoomAuthoritative(
       { appId, roomSlug },
     );
     if (cfRes.success) return { success: true };
+    return {
+      success: false,
+      error: cfRes.error || 'Trusted room leave service is unavailable. Please retry.',
+    };
   }
 
-  // 2. Direct Firestore transaction fallback
+  // Mock database only: deterministic transaction path for unit tests and local simulation.
   try {
     const roomRef = doc(database, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug);
     const memberRef = doc(database, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug, 'members', user.uid);
@@ -235,9 +246,13 @@ export async function transferOwnershipAuthoritative(
         newOwnerUid: cfRes.data.newOwnerUid,
       };
     }
+    return {
+      success: false,
+      error: cfRes.error || 'Trusted ownership transfer service is unavailable. Please retry.',
+    };
   }
 
-  // 2. Direct Firestore transaction fallback
+  // Mock database only: deterministic transaction path for unit tests and local simulation.
   try {
     const roomRef = doc(database, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug);
     const oldOwnerMemberRef = doc(database, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug, 'members', currentUser.uid);
