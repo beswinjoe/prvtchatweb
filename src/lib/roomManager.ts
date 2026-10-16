@@ -190,7 +190,7 @@ export async function leaveRoomAuthoritative(
 
       const roomData = roomSnap.data()!;
       const currentCount = typeof roomData.memberCount === 'number' ? roomData.memberCount : 1;
-      const newCount = Math.max(1, currentCount - 1);
+      const newCount = Math.max(0, currentCount - 1);
       const now = Date.now();
 
       tx.update(roomRef, {
