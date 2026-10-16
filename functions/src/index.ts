@@ -269,7 +269,7 @@ export const leaveRoom = onCall(
 
       const roomData = roomDoc.data() || {};
       const currentCount = typeof roomData.memberCount === 'number' ? roomData.memberCount : 1;
-      const newCount = Math.max(1, currentCount - 1);
+      const newCount = Math.max(0, currentCount - 1);
       const now = Date.now();
 
       transaction.update(roomRef, {
