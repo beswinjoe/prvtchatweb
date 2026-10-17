@@ -2,7 +2,8 @@
 // PRVTCHAT — ROOM MEMBERSHIP, ROLES & CAPACITY TESTS
 // =============================================================================
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as firebaseModule from './firebase';
 import {
   joinRoomAuthoritative,
   leaveRoomAuthoritative,
@@ -275,6 +276,110 @@ describe('Room Ownership, Roles, and 12-Member Capacity Suite', () => {
       doc(testDb, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug),
     );
     expect(finalSnap.data()?.memberCount).toBe(12);
+  });
+
+  it('strips former owner of all owner-only privileges after ownership transfer', async () => {
+    // Bob and Charlie join
+    await joinRoomAuthoritative(roomSlug, bob, 'Bob', testDb as any);
+    await joinRoomAuthoritative(roomSlug, charlie, 'Charlie', testDb as any);
+
+    // Alice transfers ownership to Bob
+    const transferRes = await transferOwnershipAuthoritative(roomSlug, alice, bob.uid, testDb as any);
+    expect(transferRes.success).toBe(true);
+
+    // Former owner (Alice) attempts to remove Charlie -> REJECTED
+    const aliceRemoveRes = await removeMemberAuthoritative(roomSlug, alice, charlie.uid, testDb as any);
+    expect(aliceRemoveRes.success).toBe(false);
+    expect(aliceRemoveRes.error).toContain('Only the authoritative room owner');
+
+    // Former owner (Alice) attempts to revoke room -> REJECTED
+    const aliceRevokeRes = await revokeRoomAuthoritative(roomSlug, alice, testDb as any);
+    expect(aliceRevokeRes.success).toBe(false);
+    expect(aliceRevokeRes.error).toContain('Only the authoritative room owner');
+
+    // Former owner (Alice) attempts to transfer ownership again -> REJECTED
+    const aliceTransferAgain = await transferOwnershipAuthoritative(roomSlug, alice, charlie.uid, testDb as any);
+    expect(aliceTransferAgain.success).toBe(false);
+    expect(aliceTransferAgain.error).toContain('Only the current room owner');
+
+    // New owner (Bob) can successfully remove Charlie
+    const bobRemoveRes = await removeMemberAuthoritative(roomSlug, bob, charlie.uid, testDb as any);
+    expect(bobRemoveRes.success).toBe(true);
+
+    // New owner (Bob) can successfully revoke room
+    const bobRevokeRes = await revokeRoomAuthoritative(roomSlug, bob, testDb as any);
+    expect(bobRevokeRes.success).toBe(true);
+  });
+
+  it('rejects joining expired and revoked rooms', async () => {
+    const expiredSlug = 'expired-test-room';
+    const revokedSlug = 'revoked-test-room';
+
+    // Seed expired room
+    await setDoc(doc(testDb, 'artifacts', appId, 'public', 'data', 'rooms', expiredSlug), {
+      slug: expiredSlug,
+      ownerUid: alice.uid,
+      creatorUid: alice.uid,
+      createdAt: now - 7200000,
+      expiresAt: now - 3600000,
+      status: 'active',
+      memberCount: 1,
+    });
+
+    // Seed revoked room
+    await setDoc(doc(testDb, 'artifacts', appId, 'public', 'data', 'rooms', revokedSlug), {
+      slug: revokedSlug,
+      ownerUid: alice.uid,
+      creatorUid: alice.uid,
+      createdAt: now - 3600000,
+      expiresAt: now + 3600000,
+      status: 'revoked',
+      memberCount: 1,
+    });
+
+    // Attempting to join expired room -> REJECTED
+    const expiredJoin = await joinRoomAuthoritative(expiredSlug, bob, 'Bob', testDb as any);
+    expect(expiredJoin.success).toBe(false);
+    expect(expiredJoin.error).toContain('Conversation has expired');
+
+    // Attempting to join revoked room -> REJECTED
+    const revokedJoin = await joinRoomAuthoritative(revokedSlug, bob, 'Bob', testDb as any);
+    expect(revokedJoin.success).toBe(false);
+    expect(revokedJoin.error).toContain('Conversation is no longer active');
+  });
+
+  it('fails safely and reports error truthfully without insecure fallback when Cloud Function fails', async () => {
+    // Calling with non-mock database (simulating production environment)
+    // When Cloud Function returns failure, verify operations report failure truthfully
+    // and never trigger insecure fallback writes
+    const spy = vi.spyOn(firebaseModule, 'callCloudFunction').mockResolvedValue({
+      success: false,
+      error: 'Simulated Cloud Function unavailable/unauthenticated error',
+    });
+
+    const dummyDb = { _isMock: false };
+
+    const joinRes = await joinRoomAuthoritative('any-slug', bob, 'Bob', dummyDb as any);
+    expect(joinRes.success).toBe(false);
+    expect(joinRes.error).toContain('Simulated Cloud Function');
+
+    const leaveRes = await leaveRoomAuthoritative('any-slug', bob, dummyDb as any);
+    expect(leaveRes.success).toBe(false);
+    expect(leaveRes.error).toContain('Simulated Cloud Function');
+
+    const transferRes = await transferOwnershipAuthoritative('any-slug', alice, bob.uid, dummyDb as any);
+    expect(transferRes.success).toBe(false);
+    expect(transferRes.error).toContain('Simulated Cloud Function');
+
+    const revokeRes = await revokeRoomAuthoritative('any-slug', alice, dummyDb as any);
+    expect(revokeRes.success).toBe(false);
+    expect(revokeRes.error).toContain('Simulated Cloud Function');
+
+    const removeRes = await removeMemberAuthoritative('any-slug', alice, bob.uid, dummyDb as any);
+    expect(removeRes.success).toBe(false);
+    expect(removeRes.error).toContain('Simulated Cloud Function');
+
+    spy.mockRestore();
   });
 });
 

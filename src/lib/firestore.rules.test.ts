@@ -204,19 +204,9 @@ describe('Firestore Security Rules Suite', () => {
       keyCommitment: 'commitment_hash_abc123',
     });
 
-    // Bob tries to directly self-assign 'owner' role -> DENIED
+    // Bob tries to directly self-assign membership -> DENIED
     const bobMemberRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'transfer-room', 'members', 'bob_uid');
     await assertFails(
-      setDoc(bobMemberRef, {
-        uid: 'bob_uid',
-        role: 'owner', // Spoofed owner role -> DENIED by security rules
-        status: 'active',
-        joinedAt: now,
-      }),
-    );
-
-    // Bob joins legitimately as an active participant with role 'member' -> SUCCEEDS
-    await assertSucceeds(
       setDoc(bobMemberRef, {
         uid: 'bob_uid',
         role: 'member',
@@ -224,6 +214,17 @@ describe('Firestore Security Rules Suite', () => {
         joinedAt: now,
       }),
     );
+
+    // Bob is joined authoritatively (simulating trusted Cloud Functions Admin SDK)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', 'transfer-room', 'members', 'bob_uid'), {
+        uid: 'bob_uid',
+        role: 'member',
+        status: 'active',
+        joinedAt: now,
+      });
+    });
 
     // Non-owner (Bob) attempts to transfer ownership -> FAILS
     const bobRoomRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'transfer-room');
@@ -283,19 +284,9 @@ describe('Firestore Security Rules Suite', () => {
       }),
     );
 
-    // Bob tries to spoof 'owner' role upon joining -> DENIED
+    // Direct self-assigned membership denied
     const bobMemberRef = doc(bobDb, 'artifacts', appId, 'public', 'data', 'rooms', 'member-room', 'members', 'bob_uid');
     await assertFails(
-      setDoc(bobMemberRef, {
-        uid: 'bob_uid',
-        role: 'owner', // Spoofed owner role -> DENIED by security rules
-        status: 'active',
-        joinedAt: now,
-      }),
-    );
-
-    // Bob joins legitimately as an active participant with role 'member' -> SUCCEEDS
-    await assertSucceeds(
       setDoc(bobMemberRef, {
         uid: 'bob_uid',
         role: 'member',
@@ -303,6 +294,17 @@ describe('Firestore Security Rules Suite', () => {
         joinedAt: now,
       }),
     );
+
+    // Bob is registered authoritatively via Cloud Function Admin SDK
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', 'member-room', 'members', 'bob_uid'), {
+        uid: 'bob_uid',
+        role: 'member',
+        status: 'active',
+        joinedAt: now,
+      });
+    });
 
     // Now Bob is an active member -> sending message SUCCEEDS
     await assertSucceeds(
