@@ -103,6 +103,15 @@ service cloud.firestore {
                        && request.resource.data.ownerUid != resource.data.ownerUid
                        && request.resource.data.ownerUid != request.auth.uid
                        && exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)/members/$(request.resource.data.ownerUid)))
+                      ||
+                      // Branch 3: Transactional capacity update during join/leave/removal (Strictly bound [1, 12])
+                      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
+                       && request.resource.data.memberCount is int
+                       && request.resource.data.memberCount >= 1
+                       && request.resource.data.memberCount <= 12
+                       && (request.resource.data.memberCount == resource.data.memberCount + 1
+                           || request.resource.data.memberCount == resource.data.memberCount - 1
+                           || request.resource.data.memberCount == resource.data.memberCount))
                     );
 
       // Delete allowed ONLY by authoritative room owner. Non-owners and arbitrary clients CANNOT delete room documents.
@@ -116,18 +125,19 @@ service cloud.firestore {
         allow read: if isAuthenticated() && roomExistsAndActive(appId, roomSlug);
 
         // Member creation:
-        // Initial owner member record on room creation is allowed for the authenticated room owner.
-        // Joining participants are registered authoritatively via Cloud Functions Admin SDK.
+        // Owner creates initial member doc with role 'owner'
+        // Joining participant creates member doc with role 'member' (cannot forge 'owner')
         allow create: if isAuthenticated()
                       && roomExistsAndActive(appId, roomSlug)
                       && request.resource.data.uid == memberUid
-                      && (
-                        // Owner creating their initial membership doc
-                        (memberUid == request.auth.uid && isRoomOwner(appId, roomSlug) && request.resource.data.role == 'owner')
-                      )
+                      && memberUid == request.auth.uid
                       && request.resource.data.status == 'active'
                       && request.resource.data.joinedAt is number
-                      && request.resource.data.joinedAt <= request.time.toMillis();
+                      && request.resource.data.joinedAt <= request.time.toMillis()
+                      && (
+                        (isRoomOwner(appId, roomSlug) && request.resource.data.role == 'owner') ||
+                        request.resource.data.role == 'member'
+                      );
 
         allow update: if isAuthenticated()
                       && roomExistsAndActive(appId, roomSlug)
@@ -137,14 +147,20 @@ service cloud.firestore {
                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'departedAt', 'updatedAt'])
                          && request.resource.data.status == 'departed')
                         ||
+                        // Member removal by authoritative owner
+                        (isRoomOwner(appId, roomSlug)
+                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'removedAt', 'removedBy', 'updatedAt'])
+                         && request.resource.data.status == 'removed'
+                         && request.resource.data.removedBy == request.auth.uid)
+                        ||
                         // Role update during ownership transfer by authoritative owner
                         (isRoomOwner(appId, roomSlug)
                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
                          && (request.resource.data.role == 'owner' || request.resource.data.role == 'member'))
                       );
 
-        // Client-side arbitrary deletion of member docs is prohibited; server cleanup handles shredding
-        allow delete: if false;
+        // Member records can be deleted ONLY by the authoritative room owner upon room shredding
+        allow delete: if isAuthenticated() && isRoomOwner(appId, roomSlug);
       }
 
       match /messages/{messageId} {
