@@ -39,10 +39,13 @@ export interface User {
 export interface RoomMember {
   uid: string;
   role: RoomRole;
-  status: 'active' | 'departed';
+  status: 'active' | 'departed' | 'removed';
   joinedAt: number;
   updatedAt?: number;
   displayName?: string;
+  departedAt?: number;
+  removedAt?: number;
+  removedBy?: string;
 }
 
 /** Room document metadata */

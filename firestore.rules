@@ -10,6 +10,10 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid != null;
     }
 
+    function getMemberDoc(appId, roomSlug, uid) {
+      return /databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)/members/$(uid);
+    }
+
     function isNotExpired(roomData) {
       return roomData.expiresAt != null && request.time.toMillis() < roomData.expiresAt;
     }
@@ -45,7 +49,7 @@ service cloud.firestore {
         (r.data.ownerUid != null && r.data.ownerUid == request.auth.uid) ||
         (r.data.ownerUid == null && r.data.creatorUid == request.auth.uid)
       );
-      let memberDocPath = /databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)/members/$(request.auth.uid);
+      let memberDocPath = getMemberDoc(appId, roomSlug, request.auth.uid);
       return isOwner || (exists(memberDocPath) && get(memberDocPath).data.status == 'active');
     }
 
@@ -82,7 +86,8 @@ service cloud.firestore {
       // Update allowed ONLY for:
       // 1. Authoritative owner revoking an active room
       // 2. Authoritative owner transferring ownership to an active member
-      // Note: Direct client manipulation of memberCount is forbidden. Capacity updates run via trusted Cloud Functions.
+      // 3. Coordinated transactional join or leave with getAfter / existsAfter verification
+      // 4. Coordinated member removal by authoritative owner
       allow update: if isAuthenticated()
                     && resource.data.status == 'active'
                     && isNotExpired(resource.data)
@@ -102,20 +107,49 @@ service cloud.firestore {
                        && request.resource.data.ownerUid is string
                        && request.resource.data.ownerUid != resource.data.ownerUid
                        && request.resource.data.ownerUid != request.auth.uid
-                       && exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)/members/$(request.resource.data.ownerUid)))
+                       && exists(getMemberDoc(appId, roomSlug, request.resource.data.ownerUid))
+                       && get(getMemberDoc(appId, roomSlug, request.resource.data.ownerUid)).data.status == 'active'
+                       && getAfter(getMemberDoc(appId, roomSlug, request.resource.data.ownerUid)).data.role == 'owner'
+                       && getAfter(getMemberDoc(appId, roomSlug, request.auth.uid)).data.role == 'member')
                       ||
-                      // Branch 3: Transactional capacity update during join/leave/removal (Strictly bound [1, 12])
+                      // Branch 3: Transactional capacity update during join/leave (Strictly bound [1, 12])
                       (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
                        && request.resource.data.memberCount is int
                        && request.resource.data.memberCount >= 1
                        && request.resource.data.memberCount <= 12
                        && (
-                         (!('memberCount' in resource.data) || resource.data.memberCount == null
-                          ? request.resource.data.memberCount == 2
-                          : ((request.resource.data.memberCount == resource.data.memberCount + 1 && resource.data.memberCount < 12)
-                             || (request.resource.data.memberCount == resource.data.memberCount - 1 && resource.data.memberCount > 1)
-                             || request.resource.data.memberCount == resource.data.memberCount))
+                         // 3A: Valid participant join (+1) - must atomically create active member doc for request.auth.uid
+                         (request.resource.data.memberCount == resource.data.memberCount + 1
+                          && resource.data.memberCount < 12
+                          && !exists(getMemberDoc(appId, roomSlug, request.auth.uid))
+                          && existsAfter(getMemberDoc(appId, roomSlug, request.auth.uid))
+                          && getAfter(getMemberDoc(appId, roomSlug, request.auth.uid)).data.status == 'active'
+                          && getAfter(getMemberDoc(appId, roomSlug, request.auth.uid)).data.role == 'member'
+                          && getAfter(getMemberDoc(appId, roomSlug, request.auth.uid)).data.uid == request.auth.uid)
+                         ||
+                         // 3B: Self departure (-1) - member transitions from active to departed
+                         (request.resource.data.memberCount == resource.data.memberCount - 1
+                          && resource.data.memberCount > 1
+                          && exists(getMemberDoc(appId, roomSlug, request.auth.uid))
+                          && get(getMemberDoc(appId, roomSlug, request.auth.uid)).data.status == 'active'
+                          && getAfter(getMemberDoc(appId, roomSlug, request.auth.uid)).data.status == 'departed')
+                         ||
+                         // 3C: Idempotent re-read / reconnect by active member without count change
+                         (request.resource.data.memberCount == resource.data.memberCount
+                          && exists(getMemberDoc(appId, roomSlug, request.auth.uid))
+                          && get(getMemberDoc(appId, roomSlug, request.auth.uid)).data.status == 'active')
                        ))
+                      ||
+                      // Branch 4: Member removal by authoritative owner (-1)
+                      (isRoomOwner(appId, roomSlug)
+                       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt', 'lastRemovedUid'])
+                       && request.resource.data.memberCount is int
+                       && request.resource.data.memberCount == resource.data.memberCount - 1
+                       && resource.data.memberCount > 1
+                       && request.resource.data.lastRemovedUid is string
+                       && exists(getMemberDoc(appId, roomSlug, request.resource.data.lastRemovedUid))
+                       && get(getMemberDoc(appId, roomSlug, request.resource.data.lastRemovedUid)).data.status == 'active'
+                       && getAfter(getMemberDoc(appId, roomSlug, request.resource.data.lastRemovedUid)).data.status == 'removed')
                     );
 
       // Delete allowed ONLY by authoritative room owner. Non-owners and arbitrary clients CANNOT delete room documents.
@@ -129,8 +163,8 @@ service cloud.firestore {
         allow read: if isAuthenticated() && roomExistsAndActive(appId, roomSlug);
 
         // Member creation:
-        // Owner creates initial member doc with role 'owner'
-        // Joining participant creates member doc with role 'member' (cannot forge 'owner')
+        // Case 1: Owner creates initial member doc with role 'owner' during room setup
+        // Case 2: Ordinary participant joins with role 'member', atomically coordinated with room memberCount increment
         allow create: if isAuthenticated()
                       && roomExistsAndActive(appId, roomSlug)
                       && request.resource.data.uid == memberUid
@@ -139,28 +173,39 @@ service cloud.firestore {
                       && request.resource.data.joinedAt is number
                       && request.resource.data.joinedAt <= request.time.toMillis()
                       && (
-                        (isRoomOwner(appId, roomSlug) && request.resource.data.role == 'owner') ||
-                        request.resource.data.role == 'member'
+                        (isRoomOwner(appId, roomSlug) && request.resource.data.role == 'owner')
+                        ||
+                        (request.resource.data.role == 'member'
+                         && getAfter(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)).data.memberCount == getRoom(appId, roomSlug).data.memberCount + 1
+                         && getAfter(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)).data.memberCount <= 12)
                       );
 
         allow update: if isAuthenticated()
                       && roomExistsAndActive(appId, roomSlug)
                       && (
-                        // Self departure
+                        // Self departure: only currently active member can depart, coordinated with room decrement
                         (request.auth.uid == memberUid
+                         && resource.data.status == 'active'
                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'departedAt', 'updatedAt'])
-                         && request.resource.data.status == 'departed')
+                         && request.resource.data.status == 'departed'
+                         && getAfter(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)).data.memberCount == getRoom(appId, roomSlug).data.memberCount - 1)
                         ||
-                        // Member removal by authoritative owner
+                        // Member removal by authoritative owner, coordinated with room decrement
                         (isRoomOwner(appId, roomSlug)
+                         && resource.data.status == 'active'
                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'removedAt', 'removedBy', 'updatedAt'])
                          && request.resource.data.status == 'removed'
-                         && request.resource.data.removedBy == request.auth.uid)
+                         && request.resource.data.removedBy == request.auth.uid
+                         && getAfter(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)).data.memberCount == getRoom(appId, roomSlug).data.memberCount - 1)
                         ||
                         // Role update during ownership transfer by authoritative owner
                         (isRoomOwner(appId, roomSlug)
+                         && resource.data.status == 'active'
                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
-                         && (request.resource.data.role == 'owner' || request.resource.data.role == 'member'))
+                         && (
+                           (request.resource.data.role == 'owner' && memberUid != request.auth.uid) ||
+                           (request.resource.data.role == 'member' && memberUid == request.auth.uid)
+                         ))
                       );
 
         // Member records can be deleted ONLY by the authoritative room owner upon room shredding

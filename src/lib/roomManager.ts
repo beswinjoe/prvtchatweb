@@ -101,15 +101,22 @@ export async function joinRoomAuthoritative(
       }
 
       const memberSnap = await tx.get<RoomMember>(memberRef);
-      const isAlreadyActive = memberSnap.exists() && memberSnap.data()?.status === 'active';
-
-      if (isAlreadyActive) {
-        return {
-          success: true,
-          role: memberSnap.data()?.role || 'member',
-          memberCount: roomData.memberCount || 1,
-          alreadyMember: true,
-        };
+      if (memberSnap.exists()) {
+        const memData = memberSnap.data();
+        if (memData?.status === 'removed') {
+          throw new Error('You were removed from this room by the host and cannot rejoin.');
+        }
+        if (memData?.status === 'departed') {
+          throw new Error('You have already departed this conversation.');
+        }
+        if (memData?.status === 'active') {
+          return {
+            success: true,
+            role: memData.role || 'member',
+            memberCount: roomData.memberCount || 1,
+            alreadyMember: true,
+          };
+        }
       }
 
       const currentCount = typeof roomData.memberCount === 'number' ? roomData.memberCount : 1;
@@ -432,7 +439,7 @@ export async function removeMemberAuthoritative(
       const newCount = Math.max(1, currentCount - 1);
       const now = Date.now();
 
-      tx.update(roomRef, { memberCount: newCount, updatedAt: now });
+      tx.update(roomRef, { memberCount: newCount, updatedAt: now, lastRemovedUid: targetUid });
       tx.update(memberRef, { status: 'removed', removedAt: now, removedBy: currentUser.uid, updatedAt: now });
       tx.delete(presenceRef);
 
