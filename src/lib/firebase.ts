@@ -111,7 +111,16 @@ function resolveFirebaseConfig(): Record<string, unknown> | null {
     };
   }
 
-  return null;
+  // 3. Default project configuration for prvtchat-30cc5
+  return {
+    apiKey: 'AIzaSyCxshINfB6Hvn-tBiKOow0JpHO1nYPVp7Y',
+    authDomain: 'prvtchat-30cc5.firebaseapp.com',
+    projectId: 'prvtchat-30cc5',
+    storageBucket: 'prvtchat-30cc5.firebasestorage.app',
+    messagingSenderId: '982088677664',
+    appId: '1:982088677664:web:e142494d5d7b8022ea7f45',
+    measurementId: 'G-2VVRFMR5EH',
+  };
 }
 
 const resolvedConfig = resolveFirebaseConfig();
