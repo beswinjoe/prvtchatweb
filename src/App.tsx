@@ -382,8 +382,10 @@ export default function App() {
         } catch {
           // Ignore
         }
-      } catch {
-        setJoinError('Could not connect to room. Check your network connection.');
+      } catch (err: unknown) {
+        console.error('Enter room error:', err);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        setJoinError(`Could not connect to room: ${errMsg}`);
       }
     },
     [purgeAndExpireRoom, user, displayName, authInitError]
@@ -842,9 +844,20 @@ export default function App() {
       });
 
       return true;
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Create conversation error:', err);
-      setCreateError('Failed to initialize encrypted room. Please retry.');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (
+        errMsg.toLowerCase().includes('permission') ||
+        errMsg.includes('PERMISSION_DENIED') ||
+        errMsg.includes('insufficient permissions')
+      ) {
+        setCreateError(
+          'Database permission denied. In your Firebase Console, make sure Anonymous Authentication is enabled (Build > Authentication > Sign-in method).'
+        );
+      } else {
+        setCreateError(`Failed to initialize room: ${errMsg}`);
+      }
       return false;
     } finally {
       setIsCreatingRoom(false);

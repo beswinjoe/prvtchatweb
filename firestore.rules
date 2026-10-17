@@ -62,8 +62,8 @@ service cloud.firestore {
     // ROOM DOCUMENTS: /artifacts/{appId}/public/data/rooms/{roomSlug}
     // =========================================================================
     match /artifacts/{appId}/public/data/rooms/{roomSlug} {
-      // Read allowed only if authenticated and room is currently active & unexpired
-      allow read: if isAuthenticated() && isRoomActive(resource.data);
+      // Read allowed only if authenticated (enables slug availability checks and status discovery)
+      allow read: if isAuthenticated();
 
       // Create allowed only with active status, valid 7-day bounds, authenticated owner, and max 12 members bound
       allow create: if isAuthenticated()

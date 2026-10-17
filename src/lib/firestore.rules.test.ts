@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   assertFails,
   assertSucceeds,
@@ -81,6 +81,14 @@ describe('Firestore Security Rules Suite', () => {
         keyCommitment: 'commitment_hash_abc123',
       }),
     );
+  });
+
+  it('allows authenticated users to query a non-existent room slug without permission denial', async () => {
+    const aliceDb = getEnv().authenticatedContext('alice_uid').firestore();
+    const roomRef = doc(aliceDb, 'artifacts', appId, 'public', 'data', 'rooms', 'available-slug');
+
+    const snap = await assertSucceeds(getDoc(roomRef));
+    expect(snap.exists()).toBe(false);
   });
 
   it('rejects room creation exceeding the 7-day hard ceiling', async () => {
