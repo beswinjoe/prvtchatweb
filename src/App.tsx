@@ -1201,15 +1201,9 @@ export default function App() {
   }, [user, currentView, activeSlug]);
 
   const handleLeaveRoom = useCallback(async () => {
-    if (activeSlug && user) {
-      const leaveRes = await leaveRoomAuthoritative(activeSlug, user);
-      if (!leaveRes.success) {
-        return { success: false, error: leaveRes.error || 'Failed to leave conversation room.' };
-      }
-      const presenceDocId = `${activeSlug}_${user.uid}`;
-      const presenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', presenceDocId);
-      deleteDoc(presenceRef).catch(() => {});
-    }
+    const slugToLeave = activeSlug;
+
+    // Reset client state immediately to ensure the user can always return to homepage
     setCurrentView('landing');
     setActiveSlug('');
     setActiveKeyString('');
@@ -1217,15 +1211,30 @@ export default function App() {
     setRoomData(null);
     setRoomMembers([]);
     setShowMembersModal(false);
+    setShowRevokeConfirm(false);
     setDecryptedMessages([]);
     setEncryptedMessages([]);
     setExpiredReason(null);
     setCreatedRoomResult(null);
+    setIsJoiningFromUrl(false);
+
     try {
       window.history.replaceState(null, '', window.location.pathname);
     } catch {
       // Ignore
     }
+
+    if (slugToLeave && user) {
+      try {
+        const presenceDocId = `${slugToLeave}_${user.uid}`;
+        const presenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', presenceDocId);
+        deleteDoc(presenceRef).catch(() => {});
+        await leaveRoomAuthoritative(slugToLeave, user);
+      } catch (err) {
+        console.error('Leave room background departure error:', err);
+      }
+    }
+
     return { success: true };
   }, [activeSlug, user]);
 
@@ -1260,6 +1269,19 @@ export default function App() {
     setCreatedRoomResult(null);
     setCreateError('');
     setShowCreateModal(true);
+    if (currentView === 'expired') {
+      setCurrentView('landing');
+      setActiveSlug('');
+      setActiveKeyString('');
+      setActiveCryptoKey(null);
+      setRoomData(null);
+      setExpiredReason(null);
+      try {
+        window.history.replaceState(null, '', window.location.pathname);
+      } catch {
+        // Ignore
+      }
+    }
   };
 
   if (firebaseConfigError) {

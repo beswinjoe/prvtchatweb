@@ -189,6 +189,10 @@ export async function leaveRoomAuthoritative(
       }
 
       const roomData = roomSnap.data()!;
+      // If the room was destroyed (revoked) or expired, rules forbid updating it; safely succeed
+      if (roomData.status !== 'active' || (roomData.expiresAt && Date.now() >= roomData.expiresAt)) {
+        return { success: true, memberCount: roomData.memberCount || 0 };
+      }
       const currentCount = typeof roomData.memberCount === 'number' ? roomData.memberCount : 1;
       const newCount = Math.max(1, currentCount - 1);
       const now = Date.now();
