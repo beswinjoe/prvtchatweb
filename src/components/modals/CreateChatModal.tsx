@@ -129,7 +129,7 @@ export const CreateChatModal: React.FC<CreateChatModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/40 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-md p-6 sm:p-7 overflow-hidden rounded-2xl bg-white border border-zinc-200 shadow-2xl text-zinc-950">
+      <div className="relative w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto p-6 sm:p-7 rounded-2xl bg-white border border-zinc-200 shadow-2xl text-zinc-950">
         {/* Close Button */}
         <button
           type="button"
@@ -355,17 +355,17 @@ export const CreateChatModal: React.FC<CreateChatModalProps> = ({
             <button
               type="submit"
               disabled={isCreatingRoom || Boolean(slugInput && !slugStatus.available && !slugStatus.checking)}
-              className="w-full py-3 px-4 rounded-xl btn-black text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3.5 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 btn-black text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isCreatingRoom ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                  <span>Generating Secure Keys...</span>
+                  <span>Generating Secure Keys & Link...</span>
                 </>
               ) : (
                 <>
                   <Lock className="w-3.5 h-3.5" />
-                  <span>Create Chat</span>
+                  <span>Create Chat & Generate Link</span>
                 </>
               )}
             </button>
@@ -432,7 +432,7 @@ export const CreateChatModal: React.FC<CreateChatModalProps> = ({
             <button
               type="button"
               onClick={onEnterCreatedChat}
-              className="w-full py-3 px-4 rounded-xl btn-black text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3.5 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 btn-black text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
             >
               <span>Enter Chat Now</span>
               <ArrowRight className="w-4 h-4" />

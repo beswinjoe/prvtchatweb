@@ -74,6 +74,7 @@ export default function App() {
   // Firebase Auth & Network State
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [authInitError, setAuthInitError] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
@@ -161,8 +162,16 @@ export default function App() {
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.error('Authentication initialization error:', err);
+        const fbErr = err as { code?: string; message?: string };
+        if (fbErr?.code === 'auth/configuration-not-found') {
+          setAuthInitError(
+            'Firebase Anonymous Authentication is not enabled. In Firebase Console, go to Build > Authentication > Sign-in method and enable Anonymous.'
+          );
+        } else {
+          setAuthInitError(fbErr?.message || 'Authentication initialization error.');
+        }
       }
     };
     initAuth();
@@ -288,6 +297,10 @@ export default function App() {
     async (rawSlug: string, rawKeyString: string) => {
       setJoinError('');
       setCreateError('');
+      if (!user) {
+        setJoinError(authInitError || 'Authentication initializing, please wait a moment...');
+        return;
+      }
       const cleanSlug = sanitizeSlug(rawSlug);
       if (!cleanSlug) {
         setJoinError('Invalid conversation slug.');
@@ -373,7 +386,7 @@ export default function App() {
         setJoinError('Could not connect to room. Check your network connection.');
       }
     },
-    [purgeAndExpireRoom, user, displayName]
+    [purgeAndExpireRoom, user, displayName, authInitError]
   );
 
   // --------------------------------------------------------------------------
@@ -729,7 +742,10 @@ export default function App() {
   // --------------------------------------------------------------------------
   const handleCreateConversation = async (e?: React.FormEvent): Promise<boolean> => {
     if (e) e.preventDefault();
-    if (!user) return false;
+    if (!user) {
+      setCreateError(authInitError || 'Authentication initializing, please wait a moment...');
+      return false;
+    }
     setCreateError('');
 
     let finalSlug = slugInput.trim();
@@ -856,6 +872,10 @@ export default function App() {
   const handleJoinConversation = async (e: React.FormEvent) => {
     if (e) e.preventDefault();
     setJoinError('');
+    if (!user) {
+      setJoinError(authInitError || 'Authentication initializing, please wait a moment...');
+      return;
+    }
 
     let targetSlug = joinSlugManual.trim();
     let targetKey = joinKeyManual.trim();

@@ -30,7 +30,7 @@ export const JoinModal: React.FC<JoinModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/40 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-md p-6 sm:p-7 rounded-2xl bg-white border border-zinc-200 shadow-xl space-y-5 text-left text-zinc-950">
+      <div className="relative w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto p-6 sm:p-7 rounded-2xl bg-white border border-zinc-200 shadow-xl space-y-5 text-left text-zinc-950">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -117,7 +117,7 @@ export const JoinModal: React.FC<JoinModalProps> = ({
 
           <button
             type="submit"
-            className="w-full py-3 px-4 rounded-xl btn-black text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-3.5 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 btn-black text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md"
           >
             <Lock className="w-3.5 h-3.5" />
             <span>Decrypt & Enter Room</span>
