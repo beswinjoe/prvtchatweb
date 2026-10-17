@@ -152,6 +152,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {isLanding ? (
           <div className="flex items-center gap-2 sm:gap-3">
+            <a
+              href="https://buymeacoffee.com/beswinjoe"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFDD00] text-[#0B132B] text-xs font-bold hover:scale-105 active:scale-95 transition-all duration-200 no-underline shadow-sm"
+            >
+              <span>☕</span>
+              Buy Me a Coffee
+            </a>
+            <a
+              href="https://buymeacoffee.com/beswinjoe"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="sm:hidden inline-flex items-center justify-center w-8 h-8 rounded-full bg-[#FFDD00] text-base hover:scale-110 active:scale-95 transition-all duration-200 no-underline shadow-sm"
+              title="Buy Me a Coffee"
+            >
+              ☕
+            </a>
             <button
               type="button"
               onClick={onOpenJoinModal}
