@@ -71,6 +71,60 @@ import type {
 // Injected auth token support (for Canvas/Firebase container runtime)
 declare const __initial_auth_token: string | undefined;
 
+function parseInviteUrl(): { slug: string; key: string } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const search = window.location.search || '';
+    const hash = window.location.hash || '';
+    const pathname = window.location.pathname || '';
+
+    const searchParams = new URLSearchParams(search);
+    const cleanHash = hash.replace(/^[#/?]+/, '');
+    const hashParams = new URLSearchParams(cleanHash);
+
+    // 1. Resolve slug from search (?room=, ?slug=), hash (#slug=, #room=), or path (/slug)
+    let slug =
+      searchParams.get('room') ||
+      searchParams.get('slug') ||
+      hashParams.get('room') ||
+      hashParams.get('slug') ||
+      '';
+
+    if (!slug && pathname) {
+      const match = pathname.match(/^\/([a-zA-Z0-9-_]{3,64})/);
+      if (match && match[1] && match[1] !== 'index.html') {
+        slug = match[1];
+      }
+    }
+
+    // 2. Resolve key from hash (#key=), search (?key=), or regex fallback
+    let key =
+      hashParams.get('key') ||
+      searchParams.get('key') ||
+      '';
+
+    if (!key) {
+      const combined = hash + search;
+      const keyMatch = combined.match(/[#&?]key=([A-Za-z0-9_-]{16,128})/);
+      if (keyMatch) {
+        key = keyMatch[1];
+      }
+    }
+
+    if (slug && key) {
+      return {
+        slug: slug.trim(),
+        key: key.trim(),
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+const initialInvite = parseInviteUrl();
+
 export default function App() {
   // Firebase Auth & Network State
   const [user, setUser] = useState<User | null>(null);
@@ -80,28 +134,30 @@ export default function App() {
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
 
-  // Active View & Navigation State
-  const [currentView, setCurrentView] = useState<AppView>('landing');
-  const [activeSlug, setActiveSlug] = useState('');
-  const [activeKeyString, setActiveKeyString] = useState('');
+  // Active View & Navigation State - Go STRAIGHT to chat when an invite URL is opened
+  const [currentView, setCurrentView] = useState<AppView>(() => (initialInvite ? 'chat' : 'landing'));
+  const [activeSlug, setActiveSlug] = useState(() => (initialInvite ? initialInvite.slug : ''));
+  const [activeKeyString, setActiveKeyString] = useState(() => (initialInvite ? initialInvite.key : ''));
   const [activeCryptoKey, setActiveCryptoKey] = useState<CryptoKey | null>(null);
   const [keyMetadata, setKeyMetadata] = useState<KeyMetadata>({
     fingerprint: '',
     commitment: '',
   });
 
-  // Detect invite URL on initial load to skip landing page flash
-  const [isJoiningFromUrl, setIsJoiningFromUrl] = useState(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const roomParam = params.get('room') || '';
-      const hash = window.location.hash || '';
-      const keyMatch = hash.match(/key=([A-Za-z0-9_-]+)/);
-      return !!(roomParam && keyMatch);
-    } catch {
-      return false;
+  // Track invite URL state
+  const [isJoiningFromUrl, setIsJoiningFromUrl] = useState(() => !!initialInvite);
+
+  // Eagerly pre-compute and import room key from invite URL on mount (takes ~1-2ms on client CPU)
+  useEffect(() => {
+    if (initialInvite?.key) {
+      computeKeyMetadata(initialInvite.key)
+        .then((meta) => setKeyMetadata(meta))
+        .catch((err) => console.error('Eager key metadata error:', err));
+      importRoomKey(initialInvite.key, true)
+        .then((key) => setActiveCryptoKey(key))
+        .catch((err) => console.error('Eager key import error:', err));
     }
-  });
+  }, []);
 
   // Participant Profile State
   const [displayName, setDisplayName] = useState('Operator');
@@ -289,10 +345,6 @@ export default function App() {
     async (rawSlug: string, rawKeyString: string) => {
       setJoinError('');
       setCreateError('');
-      if (!user) {
-        setJoinError(authInitError || 'Authentication initializing, please wait a moment...');
-        return;
-      }
       const cleanSlug = sanitizeSlug(rawSlug);
       if (!cleanSlug) {
         setJoinError('Invalid conversation slug.');
@@ -308,6 +360,29 @@ export default function App() {
       } catch (err: unknown) {
         console.error('Failed to import room key:', err);
         setJoinError('Invalid 256-bit encryption key in link fragment.');
+        return;
+      }
+
+      // Immediately set credentials & transition to chat view without delay
+      setActiveSlug(cleanSlug);
+      setActiveKeyString(rawKeyString.trim());
+      setActiveCryptoKey(importedKey);
+      setKeyMetadata(meta);
+      setShowJoinModal(false);
+      setCurrentView('chat');
+
+      try {
+        window.history.replaceState(
+          null,
+          '',
+          `?room=${encodeURIComponent(cleanSlug)}#key=${encodeURIComponent(rawKeyString.trim())}`
+        );
+      } catch {
+        // Ignore
+      }
+
+      if (!user) {
+        // Wait for auth initialization to complete; EFFECT 3 will verify server room state & join
         return;
       }
 
@@ -350,69 +425,50 @@ export default function App() {
         }
 
         // Authoritatively join room and enforce 12-member capacity limit
-        if (user) {
-          const joinRes = await joinRoomAuthoritative(cleanSlug, user, displayName);
-          if (!joinRes.success) {
-            if (joinRes.error && (joinRes.error.includes('12') || joinRes.error.toLowerCase().includes('capacity'))) {
-              setJoinError('This room has reached its maximum capacity of 12 active participants.');
-            } else {
-              setJoinError(joinRes.error || 'Failed to join conversation room.');
-            }
-            return;
+        const joinRes = await joinRoomAuthoritative(cleanSlug, user, displayName);
+        if (!joinRes.success) {
+          if (joinRes.error && (joinRes.error.includes('12') || joinRes.error.toLowerCase().includes('capacity'))) {
+            setJoinError('This room has reached its maximum capacity of 12 active participants.');
+          } else {
+            setJoinError(joinRes.error || 'Failed to join conversation room.');
           }
+          setCurrentView('landing');
+          setShowJoinModal(true);
+          return;
         }
 
-        setActiveSlug(cleanSlug);
-        setActiveKeyString(rawKeyString.trim());
-        setActiveCryptoKey(importedKey);
-        setKeyMetadata(meta);
         setRoomData(data);
-        setShowJoinModal(false);
-        setCurrentView('chat');
-
-        try {
-          window.history.replaceState(
-            null,
-            '',
-            `?room=${encodeURIComponent(cleanSlug)}#key=${encodeURIComponent(rawKeyString.trim())}`
-          );
-        } catch {
-          // Ignore
-        }
       } catch (err: unknown) {
         console.error('Enter room error:', err);
         const errMsg = err instanceof Error ? err.message : String(err);
         setJoinError(`Could not connect to room: ${errMsg}`);
       }
     },
-    [user, displayName, authInitError]
+    [user, displayName]
   );
 
   // --------------------------------------------------------------------------
-  // EFFECT 3: URL Parse on Initial Load
+  // EFFECT 3: URL Parse on Initial Load / Auth Ready
   // --------------------------------------------------------------------------
   useEffect(() => {
     if (!authReady) return;
 
     if (!user) {
-      // Auth resolved but no user — cannot join, fall back to landing
+      if (initialInvite) {
+        setCurrentView('landing');
+      }
       setIsJoiningFromUrl(false);
       return;
     }
 
     const checkUrlForInvitation = async () => {
       try {
-        const params = new URLSearchParams(window.location.search);
-        const roomParam = params.get('room') || '';
-        const hash = window.location.hash || '';
-        const keyMatch = hash.match(/key=([A-Za-z0-9_-]+)/) || window.location.search.match(/key=([A-Za-z0-9_-]+)/);
-        const keyParam = keyMatch ? keyMatch[1] : '';
-
-        if (roomParam && keyParam) {
-          await enterRoomWithCredentials(roomParam, keyParam);
+        const invite = parseInviteUrl();
+        if (invite) {
+          await enterRoomWithCredentials(invite.slug, invite.key);
         }
-      } catch {
-        // Ignore parse error
+      } catch (err) {
+        console.error('URL invitation error:', err);
       } finally {
         setIsJoiningFromUrl(false);
       }
@@ -896,8 +952,8 @@ export default function App() {
 
     if (joinLinkInput.trim()) {
       const raw = joinLinkInput.trim();
-      const roomMatch = raw.match(/[?&]room=([a-zA-Z0-9-_]+)/);
-      const pathMatch = raw.match(/\/([a-zA-Z0-9-_]+)[#&?]key=/);
+      const roomMatch = raw.match(/[?&#](?:room|slug)=([a-zA-Z0-9-_]+)/);
+      const pathMatch = raw.match(/\/([a-zA-Z0-9-_]{3,64})[#&?]key=/);
       const keyMatch = raw.match(/[#&?]key=([A-Za-z0-9_-]+)/);
 
       if (roomMatch) targetSlug = roomMatch[1];
