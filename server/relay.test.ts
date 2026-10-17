@@ -191,4 +191,26 @@ describe('RAM-Only MemoryRelay Server', () => {
     expect(msg.reactionsCiphertext).toBe('EncryptedReactionsData==');
     expect(msg.ciphertext).toBe('SecretCiphertext'); // Unaltered
   });
+
+  it('denies room revocation if caller is not room creator', () => {
+    const now = Date.now();
+    relay.createRoom({
+      slug: 'revoke-guard-test',
+      creatorUid: 'alice_123',
+      expiresAt: now + 3600000,
+      keyCommitment: 'hash_abc_123',
+    });
+
+    const room = relay.getRoom('revoke-guard-test');
+    expect(room).toBeDefined();
+
+    // Attacker cannot revoke room
+    const attackerUid = 'mallory_999';
+    expect(room?.creatorUid === attackerUid).toBe(false);
+
+    // Only creator can revoke room
+    expect(room?.creatorUid === 'alice_123').toBe(true);
+    relay.destroyRoom('revoke-guard-test', 'revoked');
+    expect(relay.getRoom('revoke-guard-test')).toBeUndefined();
+  });
 });

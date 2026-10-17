@@ -1,6 +1,7 @@
 import {
   Clock,
   Lock,
+  LogOut,
   Share2,
   Trash2,
   WifiOff,
@@ -16,6 +17,7 @@ interface NavbarProps {
   roomData: RoomData | null;
   isOnline: boolean;
   nowTick: number;
+  isOwner?: boolean;
   onLeaveConversation: () => void;
   onOpenCreateModal: () => void;
   onOpenJoinModal: () => void;
@@ -30,6 +32,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   roomData,
   isOnline,
   nowTick,
+  isOwner = false,
   onLeaveConversation,
   onOpenCreateModal,
   onOpenJoinModal,
@@ -198,16 +201,28 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden sm:inline">Share Link</span>
             </button>
 
-            {/* Accessible Destroy Chat Button */}
-            <button
-              type="button"
-              onClick={onOpenRevokeConfirm}
-              className="px-3.5 py-1.5 rounded-lg btn-danger text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-              title="Permanently destroy conversation and delete messages"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-              <span>Destroy Chat</span>
-            </button>
+            {/* Role-governed action: Owner destroys, Member leaves */}
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={onOpenRevokeConfirm}
+                className="px-3.5 py-1.5 rounded-lg btn-danger text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                title="Permanently destroy conversation and delete messages (Owner only)"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Destroy Chat</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onLeaveConversation}
+                className="px-3.5 py-1.5 rounded-lg btn-outline text-xs font-medium text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 flex items-center gap-1.5 cursor-pointer"
+                title="Leave conversation"
+              >
+                <LogOut className="w-3.5 h-3.5 text-zinc-600" />
+                <span>Leave Chat</span>
+              </button>
+            )}
           </div>
         ) : null}
       </div>

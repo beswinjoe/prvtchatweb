@@ -6,10 +6,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   joinRoomAuthoritative,
   leaveRoomAuthoritative,
+  removeMemberAuthoritative,
+  revokeRoomAuthoritative,
   transferOwnershipAuthoritative,
 } from './roomManager';
 import {
   appId,
+  clearMockStore,
   createMockDb,
   doc,
   getDoc,
@@ -27,6 +30,7 @@ describe('Room Ownership, Roles, and 12-Member Capacity Suite', () => {
   const testDb = createMockDb();
 
   beforeEach(async () => {
+    clearMockStore();
     // Seed test room with Alice as authoritative owner
     const roomRef = doc(testDb, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug);
     const initialRoom: RoomData = {
@@ -182,4 +186,95 @@ describe('Room Ownership, Roles, and 12-Member Capacity Suite', () => {
     const departedRes = await transferOwnershipAuthoritative(roomSlug, alice, bob.uid, testDb as any);
     expect(departedRes.success).toBe(false);
   });
+
+  it('allows ONLY authoritative owner to revoke room and rejects non-owner revocation', async () => {
+    // Bob joins as member
+    await joinRoomAuthoritative(roomSlug, bob, 'Bob', testDb as any);
+
+    // Non-owner (Bob) attempts to revoke room -> REJECTED
+    const bobRevokeRes = await revokeRoomAuthoritative(roomSlug, bob, testDb as any);
+    expect(bobRevokeRes.success).toBe(false);
+    expect(bobRevokeRes.error).toContain('Only the authoritative room owner');
+
+    // Verify room is still active
+    const snapBefore = await getDoc<RoomData>(
+      doc(testDb, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug),
+    );
+    expect(snapBefore.data()?.status).toBe('active');
+
+    // Authoritative owner (Alice) revokes room -> SUCCEEDS
+    const aliceRevokeRes = await revokeRoomAuthoritative(roomSlug, alice, testDb as any);
+    expect(aliceRevokeRes.success).toBe(true);
+
+    // Verify room status is now 'revoked'
+    const snapAfter = await getDoc<RoomData>(
+      doc(testDb, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug),
+    );
+    expect(snapAfter.data()?.status).toBe('revoked');
+  });
+
+  it('allows owner to remove an ordinary participant and denies non-owner from removing members', async () => {
+    // Bob and Charlie join
+    await joinRoomAuthoritative(roomSlug, bob, 'Bob', testDb as any);
+    await joinRoomAuthoritative(roomSlug, charlie, 'Charlie', testDb as any);
+
+    // Non-owner (Bob) attempts to remove Charlie -> REJECTED
+    const bobRemoveRes = await removeMemberAuthoritative(roomSlug, bob, charlie.uid, testDb as any);
+    expect(bobRemoveRes.success).toBe(false);
+    expect(bobRemoveRes.error).toContain('Only the authoritative room owner');
+
+    // Owner cannot remove themselves
+    const selfRemoveRes = await removeMemberAuthoritative(roomSlug, alice, alice.uid, testDb as any);
+    expect(selfRemoveRes.success).toBe(false);
+
+    // Owner (Alice) removes Charlie -> SUCCEEDS
+    const aliceRemoveRes = await removeMemberAuthoritative(roomSlug, alice, charlie.uid, testDb as any);
+    expect(aliceRemoveRes.success).toBe(true);
+    expect(aliceRemoveRes.removedUid).toBe(charlie.uid);
+
+    // Charlie's member status is now 'removed'
+    const charlieSnap = await getDoc<RoomMember>(
+      doc(testDb, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug, 'members', charlie.uid),
+    );
+    expect(charlieSnap.data()?.status).toBe('removed');
+
+    // Room memberCount decremented
+    const roomSnap = await getDoc<RoomData>(
+      doc(testDb, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug),
+    );
+    expect(roomSnap.data()?.memberCount).toBe(2);
+  });
+
+  it('enforces 12-member cap under concurrent simultaneous joins', async () => {
+    // Fill to 11 members (Alice + 10 members)
+    for (let i = 2; i <= 11; i++) {
+      await joinRoomAuthoritative(roomSlug, { uid: `u_${i}` }, `User ${i}`, testDb as any);
+    }
+
+    // Room is at 11 members
+    const snap11 = await getDoc<RoomData>(
+      doc(testDb, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug),
+    );
+    expect(snap11.data()?.memberCount).toBe(11);
+
+    // Two users (Bob and Charlie) attempt to join concurrently for the single remaining slot
+    const [join1, join2] = await Promise.all([
+      joinRoomAuthoritative(roomSlug, bob, 'Bob', testDb as any),
+      joinRoomAuthoritative(roomSlug, charlie, 'Charlie', testDb as any),
+    ]);
+
+    // Exactly one must succeed and one must be rejected with capacity error
+    const successCount = [join1, join2].filter((r) => r.success).length;
+    const rejectedCount = [join1, join2].filter((r) => !r.success).length;
+
+    expect(successCount).toBe(1);
+    expect(rejectedCount).toBe(1);
+
+    // Final room count must NEVER exceed 12
+    const finalSnap = await getDoc<RoomData>(
+      doc(testDb, 'artifacts', appId, 'public', 'data', 'rooms', roomSlug),
+    );
+    expect(finalSnap.data()?.memberCount).toBe(12);
+  });
 });
+

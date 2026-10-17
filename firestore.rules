@@ -65,30 +65,30 @@ service cloud.firestore {
       // Read allowed only if authenticated (enables slug availability checks and status discovery)
       allow read: if isAuthenticated();
 
-      // Create allowed only with active status, valid 7-day bounds, authenticated owner, and max 12 members bound
+      // Create allowed only with active status, valid 7-day bounds, authenticated owner, and initial 1 member
       allow create: if isAuthenticated()
                     && request.resource.data.status == 'active'
                     && isValidLifetime(request.resource.data)
                     && request.resource.data.createdAt is number
                     && request.resource.data.createdAt <= request.time.toMillis()
                     && request.resource.data.creatorUid == request.auth.uid
-                    && (request.resource.data.ownerUid == null || request.resource.data.ownerUid == request.auth.uid)
+                    && request.resource.data.ownerUid == request.auth.uid
                     && request.resource.data.slug == roomSlug
                     && request.resource.data.keyCommitment is string
                     && request.resource.data.keyCommitment.size() > 0
                     && request.resource.data.keyCommitment.size() <= 128
-                    && (request.resource.data.memberCount == null || (request.resource.data.memberCount is number && request.resource.data.memberCount >= 1 && request.resource.data.memberCount <= 12));
+                    && (request.resource.data.memberCount == null || request.resource.data.memberCount == 1);
 
       // Update allowed ONLY for:
-      // 1. Authoritative owner revoking or expiring an active room
+      // 1. Authoritative owner revoking an active room
       // 2. Authoritative owner transferring ownership to an active member
-      // 3. Incrementing/decrementing memberCount within [1, 12] during trusted join/leave
+      // Note: Direct client manipulation of memberCount is forbidden. Capacity updates run via trusted Cloud Functions.
       allow update: if isAuthenticated()
                     && resource.data.status == 'active'
                     && isNotExpired(resource.data)
                     && (
-                      // Branch 1: Revocation by authoritative owner ONLY (peer revoke removed)
-                      ((request.resource.data.status == 'revoked' || request.resource.data.status == 'expired')
+                      // Branch 1: Revocation by authoritative owner ONLY
+                      (request.resource.data.status == 'revoked'
                        && isRoomOwner(appId, roomSlug)
                        && request.resource.data.revokedBy == request.auth.uid
                        && request.resource.data.creatorUid == resource.data.creatorUid
@@ -103,19 +103,11 @@ service cloud.firestore {
                        && request.resource.data.ownerUid != resource.data.ownerUid
                        && request.resource.data.ownerUid != request.auth.uid
                        && exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)/members/$(request.resource.data.ownerUid)))
-                      ||
-                      // Branch 3: Capacity count update within [1, 12] bounds
-                      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
-                       && request.resource.data.memberCount is number
-                       && request.resource.data.memberCount >= 1
-                       && request.resource.data.memberCount <= 12)
                     );
 
-      // Delete allowed only by room owner or for expired/revoked rooms
+      // Delete allowed ONLY by authoritative room owner. Non-owners and arbitrary clients CANNOT delete room documents.
       allow delete: if isAuthenticated()
-                    && (isRoomOwner(appId, roomSlug)
-                        || resource.data.status == 'revoked'
-                        || !isNotExpired(resource.data));
+                    && isRoomOwner(appId, roomSlug);
 
       // -----------------------------------------------------------------------
       // SUBCOLLECTIONS (Scoped per room)
@@ -123,15 +115,17 @@ service cloud.firestore {
       match /members/{memberUid} {
         allow read: if isAuthenticated() && roomExistsAndActive(appId, roomSlug);
 
+        // Member creation:
+        // Initial owner member record on room creation is allowed for the authenticated room owner.
+        // Joining participants are registered authoritatively via Cloud Functions Admin SDK.
         allow create: if isAuthenticated()
                       && roomExistsAndActive(appId, roomSlug)
                       && request.resource.data.uid == memberUid
-                      && (request.auth.uid == memberUid || isRoomOwner(appId, roomSlug))
-                      && request.resource.data.status == 'active'
                       && (
+                        // Owner creating their initial membership doc
                         (memberUid == request.auth.uid && isRoomOwner(appId, roomSlug) && request.resource.data.role == 'owner')
-                        || (request.resource.data.role == 'member')
                       )
+                      && request.resource.data.status == 'active'
                       && request.resource.data.joinedAt is number
                       && request.resource.data.joinedAt <= request.time.toMillis();
 
@@ -143,14 +137,14 @@ service cloud.firestore {
                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'departedAt', 'updatedAt'])
                          && request.resource.data.status == 'departed')
                         ||
-                        // Role update during ownership transfer by owner
+                        // Role update during ownership transfer by authoritative owner
                         (isRoomOwner(appId, roomSlug)
                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
                          && (request.resource.data.role == 'owner' || request.resource.data.role == 'member'))
                       );
 
-        allow delete: if isAuthenticated()
-                      && (isRoomOwner(appId, roomSlug) || !roomExistsAndActive(appId, roomSlug));
+        // Client-side arbitrary deletion of member docs is prohibited; server cleanup handles shredding
+        allow delete: if false;
       }
 
       match /messages/{messageId} {
@@ -186,9 +180,7 @@ service cloud.firestore {
                       && request.resource.data.createdAt == resource.data.createdAt;
 
         allow delete: if isAuthenticated()
-                      && (resource.data.senderUid == request.auth.uid
-                          || isRoomOwner(appId, roomSlug)
-                          || !roomExistsAndActive(appId, roomSlug));
+                      && (resource.data.senderUid == request.auth.uid || isRoomOwner(appId, roomSlug));
       }
 
       match /presence/{presenceId} {
@@ -202,9 +194,7 @@ service cloud.firestore {
                      && request.resource.data.lastSeen <= request.time.toMillis();
 
         allow delete: if isAuthenticated()
-                      && (resource.data.uid == request.auth.uid
-                          || isRoomOwner(appId, roomSlug)
-                          || !roomExistsAndActive(appId, roomSlug));
+                      && (resource.data.uid == request.auth.uid || isRoomOwner(appId, roomSlug));
       }
     }
 
@@ -247,9 +237,7 @@ service cloud.firestore {
                     && request.resource.data.roomSlug == resource.data.roomSlug;
 
       allow delete: if isAuthenticated()
-                    && (resource.data.senderUid == request.auth.uid
-                        || isRoomOwner(appId, resource.data.roomSlug)
-                        || !roomExistsAndActive(appId, resource.data.roomSlug));
+                    && (resource.data.senderUid == request.auth.uid || isRoomOwner(appId, resource.data.roomSlug));
     }
 
     // =========================================================================
@@ -270,9 +258,7 @@ service cloud.firestore {
                    && request.resource.data.lastSeen <= request.time.toMillis();
 
       allow delete: if isAuthenticated()
-                    && (resource.data.uid == request.auth.uid
-                        || isRoomOwner(appId, resource.data.roomSlug)
-                        || !roomExistsAndActive(appId, resource.data.roomSlug));
+                    && (resource.data.uid == request.auth.uid || isRoomOwner(appId, resource.data.roomSlug));
     }
   }
 }

@@ -30,7 +30,6 @@ import {
   type DocumentSnapshot,
   firebaseConfigError,
   getDoc,
-  getDocs,
   onAuthStateChanged,
   onSnapshot,
   query,
@@ -48,6 +47,8 @@ import {
   joinRoomAuthoritative,
   leaveRoomAuthoritative,
   listenToRoomMembers,
+  removeMemberAuthoritative,
+  revokeRoomAuthoritative,
   transferOwnershipAuthoritative,
 } from './lib/roomManager';
 import { generateSecureRoomSlug, sanitizeSlug, validateSlug } from './lib/utils';
@@ -246,65 +247,37 @@ export default function App() {
   // --------------------------------------------------------------------------
   const purgeAndExpireRoom = useCallback(
     async (slugToPurge: string, targetStatus: 'revoked' | 'expired' = 'revoked') => {
-      if (!slugToPurge) return;
-      let accessRevoked = false;
+      if (!slugToPurge) return { success: false, error: 'No room slug provided' };
 
-      try {
-        // 1. Immediately revoke room access so no new messages can attach
-        const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', slugToPurge);
-        await updateDoc(roomRef, {
-          status: targetStatus,
-          revokedAt: Date.now(),
-          revokedBy: user ? user.uid : 'system',
-        });
-        accessRevoked = true;
-
-        // 2. Permanently delete all stored message records for this room
-        const messagesCol = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
-        const messagesQuery = query(messagesCol, where('roomSlug', '==', slugToPurge));
-        const msgSnap = await getDocs(messagesQuery);
-        const deletePromises: Promise<void>[] = [];
-        msgSnap.forEach((docSnap: QueryDocumentSnapshot) => {
-          deletePromises.push(deleteDoc(docSnap.ref));
-        });
-
-        // 3. Delete presence heartbeat records
-        const presenceCol = collection(db, 'artifacts', appId, 'public', 'data', 'presence');
-        const presenceQuery = query(presenceCol, where('roomSlug', '==', slugToPurge));
-        const presSnap = await getDocs(presenceQuery);
-        presSnap.forEach((docSnap: QueryDocumentSnapshot) => {
-          deletePromises.push(deleteDoc(docSnap.ref));
-        });
-
-        // 4. Delete room members subcollection records
-        const membersCol = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', slugToPurge, 'members');
-        const memSnap = await getDocs(membersCol);
-        memSnap.forEach((docSnap: QueryDocumentSnapshot) => {
-          deletePromises.push(deleteDoc(docSnap.ref));
-        });
-
-        await Promise.all(deletePromises);
-      } catch (err) {
-        console.error('Purge error:', err);
-      } finally {
-        // Clear active conversation keys from memory immediately
-        setActiveCryptoKey(null);
-        setActiveKeyString('');
-        setDecryptedMessages([]);
-        setEncryptedMessages([]);
-        setRoomMembers([]);
-        setShowRevokeConfirm(false);
-        setShowMembersModal(false);
-        setExpiredReason(accessRevoked ? targetStatus : 'not_found');
-        setCurrentView('expired');
-
-        // Remove secret from URL hash fragment
-        try {
-          window.history.replaceState(null, '', window.location.pathname);
-        } catch {
-          // Ignore
+      if (targetStatus === 'revoked') {
+        if (!user) {
+          return { success: false, error: 'You must be authenticated to revoke a room.' };
+        }
+        const res = await revokeRoomAuthoritative(slugToPurge, user);
+        if (!res.success) {
+          return { success: false, error: res.error || 'Failed to destroy conversation on server.' };
         }
       }
+
+      // Clear active conversation keys from memory immediately
+      setActiveCryptoKey(null);
+      setActiveKeyString('');
+      setDecryptedMessages([]);
+      setEncryptedMessages([]);
+      setRoomMembers([]);
+      setShowRevokeConfirm(false);
+      setShowMembersModal(false);
+      setExpiredReason(targetStatus);
+      setCurrentView('expired');
+
+      // Remove secret from URL hash fragment
+      try {
+        window.history.replaceState(null, '', window.location.pathname);
+      } catch {
+        // Ignore
+      }
+
+      return { success: true };
     },
     [user]
   );
@@ -360,8 +333,11 @@ export default function App() {
           return;
         }
         if (data.expiresAt && Date.now() >= data.expiresAt) {
+          setRoomData(data);
+          setActiveSlug(cleanSlug);
           setShowJoinModal(false);
-          await purgeAndExpireRoom(cleanSlug, 'expired');
+          setExpiredReason('expired');
+          setCurrentView('expired');
           return;
         }
         if (data.keyCommitment && data.keyCommitment !== meta.commitment) {
@@ -409,7 +385,7 @@ export default function App() {
         setJoinError(`Could not connect to room: ${errMsg}`);
       }
     },
-    [purgeAndExpireRoom, user, displayName, authInitError]
+    [user, displayName, authInitError]
   );
 
   // --------------------------------------------------------------------------
@@ -798,13 +774,9 @@ export default function App() {
       const existingSnap = await getDoc(roomRef);
 
       if (existingSnap.exists()) {
-        const existingData = existingSnap.data() as RoomData;
-        if (!isRoomExpired(existingData) && !isRoomRevoked(existingData)) {
-          setCreateError(`/${cleanedSlug} is already in use. Please choose another.`);
-          setIsCreatingRoom(false);
-          return false;
-        }
-        await purgeAndExpireRoom(cleanedSlug, 'expired');
+        setCreateError(`/${cleanedSlug} is already in use or reserved. Please choose another.`);
+        setIsCreatingRoom(false);
+        return false;
       }
 
       const { cryptoKey, keyString } = await generateRoomKey();
@@ -1174,7 +1146,10 @@ export default function App() {
 
   const handleLeaveRoom = useCallback(async () => {
     if (activeSlug && user) {
-      await leaveRoomAuthoritative(activeSlug, user);
+      const leaveRes = await leaveRoomAuthoritative(activeSlug, user);
+      if (!leaveRes.success) {
+        return { success: false, error: leaveRes.error || 'Failed to leave conversation room.' };
+      }
       const presenceDocId = `${activeSlug}_${user.uid}`;
       const presenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', presenceDocId);
       deleteDoc(presenceRef).catch(() => {});
@@ -1197,6 +1172,22 @@ export default function App() {
     }
     return { success: true };
   }, [activeSlug, user]);
+
+  const handleRemoveMember = useCallback(
+    async (targetUid: string) => {
+      if (!user || !activeSlug) return { success: false, error: 'No active session' };
+      const res = await removeMemberAuthoritative(activeSlug, user, targetUid);
+      return res;
+    },
+    [user, activeSlug]
+  );
+
+  const isCurrentOwner = Boolean(
+    user &&
+    roomData &&
+    ((roomData.ownerUid && roomData.ownerUid === user.uid) ||
+     (!roomData.ownerUid && roomData.creatorUid === user.uid))
+  );
 
   const handleTransferOwnership = useCallback(async (newOwnerUid: string) => {
     if (!user || !activeSlug) return { success: false, error: 'No active session' };
@@ -1257,6 +1248,7 @@ export default function App() {
         roomData={roomData}
         isOnline={isOnline}
         nowTick={nowTick}
+        isOwner={isCurrentOwner}
         onLeaveConversation={leaveConversationView}
         onOpenCreateModal={handleOpenCreateModal}
         onOpenJoinModal={() => setShowJoinModal(true)}
@@ -1412,6 +1404,7 @@ export default function App() {
         ownerUid={roomData ? (roomData.ownerUid || roomData.creatorUid) : ''}
         onTransferOwnership={handleTransferOwnership}
         onLeaveRoom={handleLeaveRoom}
+        onRemoveMember={handleRemoveMember}
       />
 
       <SecurityModal

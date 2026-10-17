@@ -74,8 +74,77 @@ export const scheduledRoomCleanup = onSchedule(
 );
 
 /**
- * Callable Cloud Function: Allows authenticated users to request immediate server-side shredding
- * of a room they created or are currently revoking.
+ * Callable Cloud Function: Authoritative room revocation and immediate shredding.
+ * Strictly restricted to the authoritative room owner.
+ */
+export const revokeRoom = onCall(
+  {
+    enforceAppCheck: false,
+    maxInstances: 10,
+  },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated to revoke room.');
+    }
+
+    const { appId = 'prvtchat-ephemeral-e2ee', roomSlug } = request.data || {};
+    if (!roomSlug || typeof roomSlug !== 'string') {
+      throw new HttpsError('invalid-argument', 'Valid roomSlug parameter is required.');
+    }
+
+    const callerUid = request.auth.uid;
+    const roomRef = db
+      .collection('artifacts')
+      .doc(appId)
+      .collection('public')
+      .doc('data')
+      .collection('rooms')
+      .doc(roomSlug);
+
+    const roomDoc = await roomRef.get();
+    if (!roomDoc.exists) {
+      throw new HttpsError('not-found', 'Room does not exist or has already been shredded.');
+    }
+
+    const data = roomDoc.data() || {};
+    const authoritativeOwner = data.ownerUid || data.creatorUid;
+
+    if (authoritativeOwner !== callerUid) {
+      throw new HttpsError('permission-denied', 'Only the authoritative room owner can revoke or destroy this room.');
+    }
+
+    const now = Date.now();
+
+    // Mark room revoked first to immediately stop new messages/joins
+    await roomRef.set(
+      {
+        status: 'revoked',
+        revokedAt: now,
+        revokedBy: callerUid,
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+
+    // Perform permanent server-side shredding
+    const result = await shredRoom(db, appId, roomSlug);
+    if (!result.success) {
+      throw new HttpsError('internal', `Failed to shred room: ${result.error}`);
+    }
+
+    return {
+      success: true,
+      roomSlug,
+      messagesDeleted: result.messagesDeleted,
+      presenceDeleted: result.presenceDeleted,
+      membersDeleted: result.membersDeleted || 0,
+    };
+  },
+);
+
+/**
+ * Callable Cloud Function: Allows authoritative room owner to trigger immediate server-side shredding
+ * of an expired or revoked room.
  */
 export const cleanupRoom = onCall(
   {
@@ -88,11 +157,11 @@ export const cleanupRoom = onCall(
     }
 
     const { appId = 'prvtchat-ephemeral-e2ee', roomSlug } = request.data || {};
-
     if (!roomSlug || typeof roomSlug !== 'string') {
       throw new HttpsError('invalid-argument', 'Valid roomSlug parameter is required.');
     }
 
+    const callerUid = request.auth.uid;
     const roomRef = db
       .collection('artifacts')
       .doc(appId)
@@ -107,12 +176,10 @@ export const cleanupRoom = onCall(
     }
 
     const data = roomDoc.data() || {};
-    const isOwner = (data.ownerUid || data.creatorUid) === request.auth.uid;
-    const isAlreadyRevoked = data.status === 'revoked' || data.status === 'expired' || data.status === 'shredding';
-    const isExpired = data.expiresAt && Date.now() >= data.expiresAt;
+    const isOwner = (data.ownerUid || data.creatorUid) === callerUid;
 
-    if (!isOwner && !isAlreadyRevoked && !isExpired) {
-      throw new HttpsError('permission-denied', 'Only room owner can trigger immediate shredding of active rooms.');
+    if (!isOwner) {
+      throw new HttpsError('permission-denied', 'Only the authoritative room owner can trigger room shredding.');
     }
 
     const result = await shredRoom(db, appId, roomSlug);
@@ -257,14 +324,21 @@ export const leaveRoom = onCall(
       .doc(roomSlug);
 
     const memberRef = roomRef.collection('members').doc(callerUid);
+    const presenceRef = db
+      .collection('artifacts')
+      .doc(appId)
+      .collection('public')
+      .doc('data')
+      .collection('presence')
+      .doc(`${roomSlug}_${callerUid}`);
 
     return db.runTransaction(async (transaction) => {
       const roomDoc = await transaction.get(roomRef);
-      if (!roomDoc.exists) return { success: true };
+      if (!roomDoc.exists) return { success: true, memberCount: 0 };
 
       const memberDoc = await transaction.get(memberRef);
       if (!memberDoc.exists || memberDoc.data()?.status !== 'active') {
-        return { success: true };
+        return { success: true, memberCount: roomDoc.data()?.memberCount || 1 };
       }
 
       const roomData = roomDoc.data() || {};
@@ -282,6 +356,8 @@ export const leaveRoom = onCall(
         departedAt: now,
         updatedAt: now,
       });
+
+      transaction.delete(presenceRef);
 
       return { success: true, memberCount: newCount };
     });
@@ -376,6 +452,95 @@ export const transferOwnership = onCall(
         success: true,
         previousOwnerUid: callerUid,
         newOwnerUid,
+      };
+    });
+  },
+);
+
+/**
+ * Callable Cloud Function: Allows authoritative room owner to remove an ordinary participant.
+ */
+export const removeMember = onCall(
+  {
+    enforceAppCheck: false,
+    maxInstances: 10,
+  },
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated to remove members.');
+    }
+
+    const { appId = 'prvtchat-ephemeral-e2ee', roomSlug, targetUid } = request.data || {};
+    if (!roomSlug || typeof roomSlug !== 'string' || !targetUid || typeof targetUid !== 'string') {
+      throw new HttpsError('invalid-argument', 'Valid roomSlug and targetUid are required.');
+    }
+
+    const callerUid = request.auth.uid;
+    if (callerUid === targetUid) {
+      throw new HttpsError('invalid-argument', 'Owner cannot remove themselves. Transfer ownership or destroy room.');
+    }
+
+    const roomRef = db
+      .collection('artifacts')
+      .doc(appId)
+      .collection('public')
+      .doc('data')
+      .collection('rooms')
+      .doc(roomSlug);
+
+    const targetMemberRef = roomRef.collection('members').doc(targetUid);
+    const presenceRef = db
+      .collection('artifacts')
+      .doc(appId)
+      .collection('public')
+      .doc('data')
+      .collection('presence')
+      .doc(`${roomSlug}_${targetUid}`);
+
+    return db.runTransaction(async (transaction) => {
+      const roomDoc = await transaction.get(roomRef);
+      if (!roomDoc.exists) {
+        throw new HttpsError('not-found', 'Conversation room does not exist.');
+      }
+
+      const roomData = roomDoc.data() || {};
+      const currentOwner = roomData.ownerUid || roomData.creatorUid;
+
+      if (currentOwner !== callerUid) {
+        throw new HttpsError('permission-denied', 'Only the authoritative room owner can remove members.');
+      }
+
+      if (roomData.status !== 'active') {
+        throw new HttpsError('failed-precondition', 'Cannot remove members from an inactive room.');
+      }
+
+      const targetDoc = await transaction.get(targetMemberRef);
+      if (!targetDoc.exists || targetDoc.data()?.status !== 'active') {
+        throw new HttpsError('failed-precondition', 'Target participant is not active in this room.');
+      }
+
+      const currentCount = typeof roomData.memberCount === 'number' ? roomData.memberCount : 1;
+      const newCount = Math.max(1, currentCount - 1);
+      const now = Date.now();
+
+      transaction.update(roomRef, {
+        memberCount: newCount,
+        updatedAt: now,
+      });
+
+      transaction.update(targetMemberRef, {
+        status: 'removed',
+        removedAt: now,
+        removedBy: callerUid,
+        updatedAt: now,
+      });
+
+      transaction.delete(presenceRef);
+
+      return {
+        success: true,
+        removedUid: targetUid,
+        memberCount: newCount,
       };
     });
   },

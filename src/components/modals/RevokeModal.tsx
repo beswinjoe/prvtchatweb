@@ -1,10 +1,10 @@
-import { AlertTriangle, Flame, Trash2, X } from 'lucide-react';
-import React from 'react';
+import { AlertTriangle, Flame, Loader2, Trash2, X } from 'lucide-react';
+import React, { useState } from 'react';
 
 interface RevokeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => Promise<{ success: boolean; error?: string } | void>;
   activeSlug: string;
 }
 
@@ -14,7 +14,25 @@ export const RevokeModal: React.FC<RevokeModalProps> = ({
   onConfirm,
   activeSlug,
 }) => {
+  const [isRevoking, setIsRevoking] = useState(false);
+  const [revokeError, setRevokeError] = useState('');
+
   if (!isOpen) return null;
+
+  const handleConfirm = async () => {
+    setIsRevoking(true);
+    setRevokeError('');
+    try {
+      const res = await onConfirm();
+      if (res && !res.success) {
+        setRevokeError(res.error || 'Failed to destroy conversation on server.');
+        setIsRevoking(false);
+      }
+    } catch (err: unknown) {
+      setRevokeError(err instanceof Error ? err.message : 'Failed to destroy conversation.');
+      setIsRevoking(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/40 backdrop-blur-xs animate-in fade-in duration-150">
@@ -36,8 +54,12 @@ export const RevokeModal: React.FC<RevokeModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-colors cursor-pointer"
+            disabled={isRevoking}
+            onClick={() => {
+              setRevokeError('');
+              onClose();
+            }}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-colors cursor-pointer disabled:opacity-50"
           >
             <X className="w-4 h-4" />
           </button>
@@ -55,24 +77,44 @@ export const RevokeModal: React.FC<RevokeModalProps> = ({
               This cannot be undone. Active participants will be disconnected immediately.
             </span>
           </div>
+
+          {revokeError && (
+            <div className="p-3 rounded-xl bg-red-100 border border-red-200 text-red-900 text-xs font-medium">
+              {revokeError}
+            </div>
+          )}
         </div>
 
         {/* Buttons */}
         <div className="flex items-center justify-end gap-2.5 pt-2">
           <button
             type="button"
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-700 text-xs font-medium transition-colors cursor-pointer"
+            disabled={isRevoking}
+            onClick={() => {
+              setRevokeError('');
+              onClose();
+            }}
+            className="px-4 py-2.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-700 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="button"
-            onClick={onConfirm}
-            className="px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+            disabled={isRevoking}
+            onClick={handleConfirm}
+            className="px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors disabled:opacity-60"
           >
-            <Trash2 className="w-4 h-4" />
-            <span>Destroy Chat Now</span>
+            {isRevoking ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Destroying...</span>
+              </>
+            ) : (
+              <>
+                <Trash2 className="w-4 h-4" />
+                <span>Destroy Chat Now</span>
+              </>
+            )}
           </button>
         </div>
       </div>

@@ -450,7 +450,7 @@ export function createRelayServer(port: number = 4040): { server: http.Server; w
             if (!currentRoomSlug) return;
             const room = relay.getRoom(currentRoomSlug);
             if (!room) return;
-            if (room.creatorUid !== msg.uid && !room.allowPeerRevoke) {
+            if (room.creatorUid !== msg.uid) {
               ws.send(JSON.stringify({ type: 'error', error: 'Only room creator can revoke this conversation.' }));
               return;
             }

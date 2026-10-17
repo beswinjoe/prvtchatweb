@@ -203,6 +203,9 @@ export async function callCloudFunction<Req = any, Res = any>(
 // =============================================================================
 
 const mockStore = new Map<string, Record<string, unknown>>();
+export function clearMockStore(): void {
+  mockStore.clear();
+}
 const STORAGE_KEY = 'prvtchat_local_relay_v2';
 
 try {
@@ -470,6 +473,8 @@ export interface Transaction {
   delete(docRef: DocumentReference): Transaction;
 }
 
+let mockTxQueue = Promise.resolve();
+
 export async function runTransaction<T>(
   _firestore: any,
   updateFunction: (transaction: Transaction) => Promise<T>,
@@ -506,53 +511,62 @@ export async function runTransaction<T>(
     });
   }
 
-  // Standalone mock transaction
-  const stagedSets = new Map<string, Record<string, any>>();
-  const stagedDeletes = new Set<string>();
+  return new Promise<T>((resolve, reject) => {
+    mockTxQueue = mockTxQueue
+      .catch(() => {})
+      .then(async () => {
+        try {
+          const stagedSets = new Map<string, Record<string, any>>();
+          const stagedDeletes = new Set<string>();
 
-  const mockTx: Transaction = {
-    async get<DocT = any>(docRef: DocumentReference): Promise<DocumentSnapshot<DocT>> {
-      const path = docRef.path || '';
-      const staged = stagedSets.get(path);
-      const data = staged !== undefined ? staged : mockStore.get(path);
-      return {
-        id: docRef.id || '',
-        exists: () => Boolean(data),
-        data: () => (data ? ({ ...data } as DocT) : undefined),
-      };
-    },
-    set(docRef: DocumentReference, data: Record<string, any>, options?: { merge?: boolean }) {
-      const path = docRef.path || '';
-      const existing = options?.merge ? stagedSets.get(path) || mockStore.get(path) || {} : {};
-      stagedSets.set(path, { ...existing, ...data });
-      stagedDeletes.delete(path);
-      return mockTx;
-    },
-    update(docRef: DocumentReference, partial: Record<string, any>) {
-      const path = docRef.path || '';
-      const existing = stagedSets.get(path) || mockStore.get(path) || {};
-      stagedSets.set(path, { ...existing, ...partial });
-      return mockTx;
-    },
-    delete(docRef: DocumentReference) {
-      const path = docRef.path || '';
-      stagedDeletes.add(path);
-      stagedSets.delete(path);
-      return mockTx;
-    },
-  };
+          const mockTx: Transaction = {
+            async get<DocT = any>(docRef: DocumentReference): Promise<DocumentSnapshot<DocT>> {
+              const path = docRef.path || '';
+              const staged = stagedSets.get(path);
+              const data = staged !== undefined ? staged : mockStore.get(path);
+              return {
+                id: docRef.id || '',
+                exists: () => Boolean(data),
+                data: () => (data ? ({ ...data } as DocT) : undefined),
+              };
+            },
+            set(docRef: DocumentReference, data: Record<string, any>, options?: { merge?: boolean }) {
+              const path = docRef.path || '';
+              const existing = options?.merge ? stagedSets.get(path) || mockStore.get(path) || {} : {};
+              stagedSets.set(path, { ...existing, ...data });
+              stagedDeletes.delete(path);
+              return mockTx;
+            },
+            update(docRef: DocumentReference, partial: Record<string, any>) {
+              const path = docRef.path || '';
+              const existing = stagedSets.get(path) || mockStore.get(path) || {};
+              stagedSets.set(path, { ...existing, ...partial });
+              return mockTx;
+            },
+            delete(docRef: DocumentReference) {
+              const path = docRef.path || '';
+              stagedDeletes.add(path);
+              stagedSets.delete(path);
+              return mockTx;
+            },
+          };
 
-  const res = await updateFunction(mockTx);
-  for (const [p, d] of stagedSets.entries()) {
-    mockStore.set(p, d);
-    notifySubscribers(p);
-  }
-  for (const p of stagedDeletes) {
-    mockStore.delete(p);
-    notifySubscribers(p);
-  }
-  persistStore();
-  return res;
+          const res = await updateFunction(mockTx);
+          for (const [p, d] of stagedSets.entries()) {
+            mockStore.set(p, d);
+            notifySubscribers(p);
+          }
+          for (const p of stagedDeletes) {
+            mockStore.delete(p);
+            notifySubscribers(p);
+          }
+          persistStore();
+          resolve(res);
+        } catch (err) {
+          reject(err);
+        }
+      });
+  });
 }
 
 export async function addDoc(

@@ -6,6 +6,7 @@ import {
   LogOut,
   User as UserIcon,
   Users,
+  UserX,
   X,
 } from 'lucide-react';
 import React, { useState } from 'react';
@@ -20,6 +21,7 @@ interface MemberManagementModalProps {
   ownerUid: string;
   onTransferOwnership: (targetUid: string) => Promise<{ success: boolean; error?: string }>;
   onLeaveRoom: () => Promise<{ success: boolean; error?: string }>;
+  onRemoveMember?: (targetUid: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const MemberManagementModal: React.FC<MemberManagementModalProps> = ({
@@ -31,6 +33,7 @@ export const MemberManagementModal: React.FC<MemberManagementModalProps> = ({
   ownerUid,
   onTransferOwnership,
   onLeaveRoom,
+  onRemoveMember,
 }) => {
   const [selectedRecipient, setSelectedRecipient] = useState<RoomMember | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
@@ -40,6 +43,8 @@ export const MemberManagementModal: React.FC<MemberManagementModalProps> = ({
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const [leaveError, setLeaveError] = useState('');
+  const [removingUid, setRemovingUid] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
 
   if (!isOpen) return null;
 
@@ -76,6 +81,17 @@ export const MemberManagementModal: React.FC<MemberManagementModalProps> = ({
     setIsLeaving(false);
     if (!res.success) {
       setLeaveError(res.error || 'Failed to leave room.');
+    }
+  };
+
+  const handleExecuteRemove = async (targetUid: string) => {
+    if (!onRemoveMember) return;
+    setRemovingUid(targetUid);
+    setActionError('');
+    const res = await onRemoveMember(targetUid);
+    setRemovingUid(null);
+    if (!res.success) {
+      setActionError(res.error || 'Failed to remove participant.');
     }
   };
 
@@ -174,6 +190,11 @@ export const MemberManagementModal: React.FC<MemberManagementModalProps> = ({
         ) : (
           /* Normal Members List */
           <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[160px]">
+            {actionError && (
+              <div className="p-2.5 rounded-xl bg-red-100 border border-red-200 text-red-900 text-xs font-medium">
+                {actionError}
+              </div>
+            )}
             {members.length === 0 ? (
               <div className="text-center py-8 text-xs text-zinc-500">
                 No active participants recorded.
@@ -221,17 +242,33 @@ export const MemberManagementModal: React.FC<MemberManagementModalProps> = ({
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       {isCurrentOwner && !isMe && (
-                        <button
-                          type="button"
-                          onClick={() => handleStartTransfer(member)}
-                          className="px-2.5 py-1.5 rounded-lg border border-zinc-200 hover:border-zinc-950 hover:bg-zinc-100 text-zinc-800 text-[11px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-                          title="Transfer room ownership"
-                        >
-                          <Crown className="w-3 h-3 text-zinc-700" />
-                          <span className="hidden sm:inline">Transfer Ownership</span>
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleStartTransfer(member)}
+                            className="px-2 py-1 rounded-lg border border-zinc-200 hover:border-zinc-950 hover:bg-zinc-100 text-zinc-800 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Transfer room ownership"
+                          >
+                            <Crown className="w-3 h-3 text-zinc-700" />
+                            <span className="hidden sm:inline">Transfer</span>
+                          </button>
+                          {onRemoveMember && (
+                            <button
+                              type="button"
+                              onClick={() => handleExecuteRemove(member.uid)}
+                              disabled={removingUid === member.uid}
+                              className="px-2 py-1 rounded-lg border border-rose-200 hover:bg-rose-50 text-rose-600 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                              title="Remove participant from room"
+                            >
+                              <UserX className="w-3 h-3 text-rose-600" />
+                              <span className="hidden sm:inline">
+                                {removingUid === member.uid ? 'Removing...' : 'Remove'}
+                              </span>
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
