@@ -7,7 +7,7 @@ import { JoinModal } from './components/modals/JoinModal';
 import { LightboxModal } from './components/modals/LightboxModal';
 import { MemberManagementModal } from './components/modals/MemberManagementModal';
 import { RevokeModal } from './components/modals/RevokeModal';
-import { SecurityModal } from './components/modals/SecurityModal';
+import { SecurityModal, type InfoModalTab } from './components/modals/SecurityModal';
 import { ShareModal } from './components/modals/ShareModal';
 import { Navbar } from './components/Navbar';
 import { DEFAULT_EXPIRATION_ID } from './lib/constants';
@@ -151,10 +151,16 @@ export default function App() {
   // Modals & UI Controls
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [securityModalTab, setSecurityModalTab] = useState<InfoModalTab>('privacy');
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<ImageAttachment | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleOpenSecurityModal = useCallback((tab: InfoModalTab = 'privacy') => {
+    setSecurityModalTab(tab);
+    setShowSecurityModal(true);
+  }, []);
 
   // Ticker for live TTL countdowns
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -1256,7 +1262,7 @@ export default function App() {
         onOpenJoinModal={() => setShowJoinModal(true)}
         onOpenShareModal={() => setShowShareModal(true)}
         onOpenRevokeConfirm={() => setShowRevokeConfirm(true)}
-        onOpenSecurityModal={() => setShowSecurityModal(true)}
+        onOpenSecurityModal={handleOpenSecurityModal}
       />
 
       {/* Main Views */}
@@ -1283,7 +1289,7 @@ export default function App() {
           <LandingView
             onOpenCreateModal={handleOpenCreateModal}
             onOpenJoinModal={() => setShowJoinModal(true)}
-            onOpenSecurityModal={() => setShowSecurityModal(true)}
+            onOpenSecurityModal={() => handleOpenSecurityModal('how-it-works')}
           />
 
           {/* Footer: Pharmaceutical Disclaimer */}
@@ -1411,6 +1417,7 @@ export default function App() {
       <SecurityModal
         isOpen={showSecurityModal}
         onClose={() => setShowSecurityModal(false)}
+        initialTab={securityModalTab}
       />
 
       <LightboxModal

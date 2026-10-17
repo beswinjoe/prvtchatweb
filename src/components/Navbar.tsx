@@ -8,6 +8,7 @@ import {
 import React from 'react';
 import { formatTimeRemaining } from '../lib/expiry';
 import type { AppView, RoomData } from '../types';
+import type { InfoModalTab } from './modals/SecurityModal';
 
 interface NavbarProps {
   currentView: AppView;
@@ -20,7 +21,7 @@ interface NavbarProps {
   onOpenJoinModal: () => void;
   onOpenShareModal: () => void;
   onOpenRevokeConfirm: () => void;
-  onOpenSecurityModal: () => void;
+  onOpenSecurityModal: (tab?: InfoModalTab) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -97,35 +98,35 @@ export const Navbar: React.FC<NavbarProps> = ({
         <nav className="hidden md:flex items-center gap-7 lg:gap-9 text-sm font-medium text-[#0B132B]/85">
           <button
             type="button"
-            onClick={onOpenSecurityModal}
+            onClick={() => onOpenSecurityModal('features')}
             className="hover:text-[#0B132B] transition-colors cursor-pointer"
           >
             Features
           </button>
           <button
             type="button"
-            onClick={onOpenSecurityModal}
+            onClick={() => onOpenSecurityModal('how-it-works')}
             className="hover:text-[#0B132B] transition-colors cursor-pointer"
           >
             How it works
           </button>
           <button
             type="button"
-            onClick={onOpenSecurityModal}
+            onClick={() => onOpenSecurityModal('who-its-for')}
             className="hover:text-[#0B132B] transition-colors cursor-pointer"
           >
             Who it's for
           </button>
           <button
             type="button"
-            onClick={onOpenSecurityModal}
+            onClick={() => onOpenSecurityModal('privacy')}
             className="hover:text-[#0B132B] transition-colors cursor-pointer"
           >
             Privacy
           </button>
           <button
             type="button"
-            onClick={onOpenSecurityModal}
+            onClick={() => onOpenSecurityModal('faq')}
             className="hover:text-[#0B132B] transition-colors cursor-pointer"
           >
             FAQ
