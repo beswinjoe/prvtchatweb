@@ -310,9 +310,11 @@ export default function App() {
       let importedKey: CryptoKey;
       let meta: KeyMetadata;
       try {
-        importedKey = await importRoomKey(rawKeyString.trim());
-        meta = await computeKeyMetadata(importedKey);
-      } catch {
+        const cleanKey = rawKeyString.trim();
+        meta = await computeKeyMetadata(cleanKey);
+        importedKey = await importRoomKey(cleanKey, true);
+      } catch (err: unknown) {
+        console.error('Failed to import room key:', err);
         setJoinError('Invalid 256-bit encryption key in link fragment.');
         return;
       }
@@ -398,9 +400,9 @@ export default function App() {
     const checkUrlForInvitation = async () => {
       try {
         const params = new URLSearchParams(window.location.search);
-        const roomParam = params.get('room');
+        const roomParam = params.get('room') || '';
         const hash = window.location.hash || '';
-        const keyMatch = hash.match(/key=([A-Za-z0-9_-]+)/);
+        const keyMatch = hash.match(/key=([A-Za-z0-9_-]+)/) || window.location.search.match(/key=([A-Za-z0-9_-]+)/);
         const keyParam = keyMatch ? keyMatch[1] : '';
 
         if (roomParam && keyParam) {
@@ -896,8 +898,8 @@ export default function App() {
     if (joinLinkInput.trim()) {
       const raw = joinLinkInput.trim();
       const roomMatch = raw.match(/[?&]room=([a-zA-Z0-9-_]+)/);
-      const pathMatch = raw.match(/\/([a-zA-Z0-9-_]+)#key=/);
-      const keyMatch = raw.match(/#key=([A-Za-z0-9_-]+)/);
+      const pathMatch = raw.match(/\/([a-zA-Z0-9-_]+)[#&?]key=/);
+      const keyMatch = raw.match(/[#&?]key=([A-Za-z0-9_-]+)/);
 
       if (roomMatch) targetSlug = roomMatch[1];
       else if (pathMatch) targetSlug = pathMatch[1];

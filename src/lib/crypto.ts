@@ -80,7 +80,7 @@ export async function generateRoomKey(): Promise<{
  */
 export async function importRoomKey(
   keyString: string,
-  extractable = false,
+  extractable = true,
 ): Promise<CryptoKey> {
   if (!keyString || typeof keyString !== 'string') {
     throw new Error('Invalid or missing 256-bit encryption key.');
@@ -117,11 +117,14 @@ export async function computeKeyMetadata(
   const crypto = getCrypto();
   let rawBytes: Uint8Array;
   if (typeof keyInput === 'string') {
-    rawBytes = base64UrlToBuffer(keyInput);
+    rawBytes = base64UrlToBuffer(keyInput.trim());
   } else if (keyInput instanceof Uint8Array) {
     rawBytes = keyInput;
   } else {
     // CryptoKey
+    if (!keyInput.extractable) {
+      throw new Error('CryptoKey is non-extractable. Pass key string or raw buffer to compute metadata.');
+    }
     const rawBuffer = await crypto.subtle.exportKey('raw', keyInput);
     rawBytes = new Uint8Array(rawBuffer);
   }

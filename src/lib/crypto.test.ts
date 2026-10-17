@@ -36,6 +36,18 @@ describe('Web Crypto E2EE Primitives', () => {
     expect(decrypted.test).toBe('secure');
   });
 
+  it('computes metadata directly from a key string and from an imported key without throwing', async () => {
+    const { keyString } = await generateRoomKey();
+    const metaFromString = await computeKeyMetadata(keyString);
+    expect(metaFromString.commitment).toBeDefined();
+    expect(metaFromString.fingerprint).toBeDefined();
+
+    const imported = await importRoomKey(keyString, true);
+    const metaFromKey = await computeKeyMetadata(imported);
+    expect(metaFromKey.commitment).toBe(metaFromString.commitment);
+    expect(metaFromKey.fingerprint).toBe(metaFromString.fingerprint);
+  });
+
   it('encrypts and decrypts payloads roundtrip accurately', async () => {
     const { cryptoKey } = await generateRoomKey();
     const sampleMessage = {
