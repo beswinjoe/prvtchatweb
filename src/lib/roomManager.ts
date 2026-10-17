@@ -15,6 +15,9 @@ import {
   type Transaction,
 } from './firebase';
 
+/** Skip Cloud Functions when not explicitly enabled (avoids 3s timeout on undeployed functions) */
+const useCloudFunctions = import.meta.env.VITE_USE_CLOUD_FUNCTIONS === 'true';
+
 export interface JoinRoomResult {
   success: boolean;
   role: RoomRole;
@@ -44,8 +47,8 @@ export async function joinRoomAuthoritative(
     return { success: false, role: 'member', memberCount: 0, error: 'User must be authenticated.' };
   }
 
-  // 1. Attempt server-side trusted Cloud Function if not using mock db
-  if (!(database as any)?._isMock) {
+  // 1. Attempt server-side trusted Cloud Function (only when explicitly enabled)
+  if (useCloudFunctions && !(database as any)?._isMock) {
     const cfRes = await callCloudFunction<
       { appId: string; roomSlug: string; displayName: string },
       { success: boolean; role: RoomRole; memberCount: number; alreadyMember?: boolean }
@@ -154,8 +157,8 @@ export async function leaveRoomAuthoritative(
 ): Promise<{ success: boolean; error?: string }> {
   if (!user || !user.uid) return { success: true };
 
-  // 1. Attempt Cloud Function if not using mock db
-  if (!(database as any)?._isMock) {
+  // 1. Attempt Cloud Function (only when explicitly enabled)
+  if (useCloudFunctions && !(database as any)?._isMock) {
     const cfRes = await callCloudFunction<{ appId: string; roomSlug: string }, { success: boolean }>(
       'leaveRoom',
       { appId, roomSlug },
@@ -217,8 +220,8 @@ export async function transferOwnershipAuthoritative(
     return { success: false, error: 'Cannot transfer ownership to yourself.' };
   }
 
-  // 1. Attempt Cloud Function if not using mock db
-  if (!(database as any)?._isMock) {
+  // 1. Attempt Cloud Function (only when explicitly enabled)
+  if (useCloudFunctions && !(database as any)?._isMock) {
     const cfRes = await callCloudFunction<
       { appId: string; roomSlug: string; newOwnerUid: string },
       { success: boolean; previousOwnerUid: string; newOwnerUid: string }

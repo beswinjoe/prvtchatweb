@@ -89,6 +89,19 @@ export default function App() {
     commitment: '',
   });
 
+  // Detect invite URL on initial load to skip landing page flash
+  const [isJoiningFromUrl, setIsJoiningFromUrl] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room') || '';
+      const hash = window.location.hash || '';
+      const keyMatch = hash.match(/key=([A-Za-z0-9_-]+)/);
+      return !!(roomParam && keyMatch);
+    } catch {
+      return false;
+    }
+  });
+
   // Participant Profile State
   const [displayName, setDisplayName] = useState('Operator');
 
@@ -397,6 +410,14 @@ export default function App() {
   // EFFECT 3: URL Parse on Initial Load
   // --------------------------------------------------------------------------
   useEffect(() => {
+    if (!authReady) return;
+
+    if (!user) {
+      // Auth resolved but no user — cannot join, fall back to landing
+      setIsJoiningFromUrl(false);
+      return;
+    }
+
     const checkUrlForInvitation = async () => {
       try {
         const params = new URLSearchParams(window.location.search);
@@ -410,11 +431,11 @@ export default function App() {
         }
       } catch {
         // Ignore parse error
+      } finally {
+        setIsJoiningFromUrl(false);
       }
     };
-    if (authReady && user) {
-      checkUrlForInvitation();
-    }
+    checkUrlForInvitation();
   }, [authReady, user, enterRoomWithCredentials]);
 
   // --------------------------------------------------------------------------
@@ -1239,12 +1260,50 @@ export default function App() {
       />
 
       {/* Main Views */}
-      {currentView === 'landing' && (
-        <LandingView
-          onOpenCreateModal={handleOpenCreateModal}
-          onOpenJoinModal={() => setShowJoinModal(true)}
-          onOpenSecurityModal={() => setShowSecurityModal(true)}
-        />
+      {/* Instant connecting screen when opening an invite link */}
+      {currentView === 'landing' && isJoiningFromUrl && (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-5">
+          <div className="w-20 h-20 rounded-3xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-xl">
+            <svg className="w-10 h-10 text-white animate-pulse" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25z" />
+            </svg>
+          </div>
+          <div className="text-center space-y-2">
+            <p className="text-white text-lg font-semibold tracking-tight">Unlocking Private Chat</p>
+            <p className="text-white/60 text-xs">Establishing encrypted connection…</p>
+          </div>
+          <div className="w-48 h-1.5 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-full w-2/3 bg-white/50 rounded-full animate-pulse" />
+          </div>
+        </div>
+      )}
+
+      {currentView === 'landing' && !isJoiningFromUrl && (
+        <>
+          <LandingView
+            onOpenCreateModal={handleOpenCreateModal}
+            onOpenJoinModal={() => setShowJoinModal(true)}
+            onOpenSecurityModal={() => setShowSecurityModal(true)}
+          />
+
+          {/* Footer: Buy Me a Coffee + Pharmaceutical Disclaimer */}
+          <footer className="w-full px-6 pb-8 pt-2 flex flex-col items-center gap-5">
+            <a
+              href="https://buymeacoffee.com/beswinjoe"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#FFDD00] text-[#0B132B] text-sm font-bold shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all duration-200 no-underline"
+            >
+              <span className="text-lg">☕</span>
+              Buy Me a Coffee
+            </a>
+            <div className="max-w-xl text-center px-4">
+              <p className="text-[8px] sm:text-[9px] leading-relaxed text-white/35 tracking-wide" style={{ fontStyle: 'italic' }}>
+                ⚠️ CAUTION: PRVTCHAT® may cause excessive feelings of privacy, sudden distrust of unencrypted messaging apps, and compulsive link-sharing behavior. Side effects include: whispering while typing, paranoia about plaintext, and an overwhelming urge to say &quot;it&apos;s encrypted&quot; in every conversation. If your conversation persists beyond 7 days, please create a new room. Not responsible for secrets you accidentally reveal by hitting send too early. We don&apos;t store, read, or judge your messages — we literally can&apos;t. Use responsibly. Keep out of reach of hackers. Individual encryption results may vary. No animals were harmed in the making of this chat. If you experience a sudden loss of plaintext, do not panic — this is working as intended.
+              </p>
+            </div>
+          </footer>
+        </>
       )}
 
       {currentView === 'chat' && (
