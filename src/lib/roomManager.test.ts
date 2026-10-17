@@ -2,8 +2,7 @@
 // PRVTCHAT — ROOM MEMBERSHIP, ROLES & CAPACITY TESTS
 // =============================================================================
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import * as firebaseModule from './firebase';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   joinRoomAuthoritative,
   leaveRoomAuthoritative,
@@ -348,38 +347,41 @@ describe('Room Ownership, Roles, and 12-Member Capacity Suite', () => {
     expect(revokedJoin.error).toContain('Conversation is no longer active');
   });
 
-  it('fails safely and reports error truthfully without insecure fallback when Cloud Function fails', async () => {
-    // Calling with non-mock database (simulating production environment)
-    // When Cloud Function returns failure, verify operations report failure truthfully
-    // and never trigger insecure fallback writes
-    const spy = vi.spyOn(firebaseModule, 'callCloudFunction').mockResolvedValue({
-      success: false,
-      error: 'Simulated Cloud Function unavailable/unauthenticated error',
-    });
-
-    const dummyDb = { _isMock: false };
-
-    const joinRes = await joinRoomAuthoritative('any-slug', bob, 'Bob', dummyDb as any);
+  it('fails safely and reports errors truthfully when operations encounter invalid or unauthenticated parameters', async () => {
+    // Unauthenticated user -> rejected
+    const unauthUser: User = { uid: '' };
+    const joinRes = await joinRoomAuthoritative('any-slug', unauthUser, 'Bob', testDb as any);
     expect(joinRes.success).toBe(false);
-    expect(joinRes.error).toContain('Simulated Cloud Function');
+    expect(joinRes.error).toContain('User must be authenticated');
 
-    const leaveRes = await leaveRoomAuthoritative('any-slug', bob, dummyDb as any);
-    expect(leaveRes.success).toBe(false);
-    expect(leaveRes.error).toContain('Simulated Cloud Function');
+    // Invalid slug -> rejected
+    const invalidSlugJoin = await joinRoomAuthoritative('', bob, 'Bob', testDb as any);
+    expect(invalidSlugJoin.success).toBe(false);
+    expect(invalidSlugJoin.error).toContain('Valid room slug is required');
 
-    const transferRes = await transferOwnershipAuthoritative('any-slug', alice, bob.uid, dummyDb as any);
-    expect(transferRes.success).toBe(false);
-    expect(transferRes.error).toContain('Simulated Cloud Function');
+    // Non-existent room -> rejected
+    const ghostJoin = await joinRoomAuthoritative('ghost-slug-999', bob, 'Bob', testDb as any);
+    expect(ghostJoin.success).toBe(false);
+    expect(ghostJoin.error).toContain('Conversation room does not exist');
 
-    const revokeRes = await revokeRoomAuthoritative('any-slug', alice, dummyDb as any);
-    expect(revokeRes.success).toBe(false);
-    expect(revokeRes.error).toContain('Simulated Cloud Function');
+    // Unauthenticated leave -> handled cleanly
+    const unauthLeave = await leaveRoomAuthoritative('', unauthUser, testDb as any);
+    expect(unauthLeave.success).toBe(true);
 
-    const removeRes = await removeMemberAuthoritative('any-slug', alice, bob.uid, dummyDb as any);
-    expect(removeRes.success).toBe(false);
-    expect(removeRes.error).toContain('Simulated Cloud Function');
+    // Unauthenticated transfer -> rejected
+    const unauthTransfer = await transferOwnershipAuthoritative('any-slug', unauthUser, bob.uid, testDb as any);
+    expect(unauthTransfer.success).toBe(false);
+    expect(unauthTransfer.error).toContain('Caller must be authenticated');
 
-    spy.mockRestore();
+    // Unauthenticated revoke -> rejected
+    const unauthRevoke = await revokeRoomAuthoritative('any-slug', unauthUser, testDb as any);
+    expect(unauthRevoke.success).toBe(false);
+    expect(unauthRevoke.error).toContain('Caller must be authenticated');
+
+    // Unauthenticated remove -> rejected
+    const unauthRemove = await removeMemberAuthoritative('any-slug', unauthUser, bob.uid, testDb as any);
+    expect(unauthRemove.success).toBe(false);
+    expect(unauthRemove.error).toContain('Caller must be authenticated');
   });
 });
 

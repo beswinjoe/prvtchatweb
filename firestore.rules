@@ -103,6 +103,19 @@ service cloud.firestore {
                        && request.resource.data.ownerUid != resource.data.ownerUid
                        && request.resource.data.ownerUid != request.auth.uid
                        && exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomSlug)/members/$(request.resource.data.ownerUid)))
+                      ||
+                      // Branch 3: Transactional capacity update during join/leave/removal (Strictly bound [1, 12])
+                      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
+                       && request.resource.data.memberCount is int
+                       && request.resource.data.memberCount >= 1
+                       && request.resource.data.memberCount <= 12
+                       && (
+                         (!('memberCount' in resource.data) || resource.data.memberCount == null
+                          ? request.resource.data.memberCount == 2
+                          : ((request.resource.data.memberCount == resource.data.memberCount + 1 && resource.data.memberCount < 12)
+                             || (request.resource.data.memberCount == resource.data.memberCount - 1 && resource.data.memberCount > 1)
+                             || request.resource.data.memberCount == resource.data.memberCount))
+                       ))
                     );
 
       // Delete allowed ONLY by authoritative room owner. Non-owners and arbitrary clients CANNOT delete room documents.
@@ -116,8 +129,8 @@ service cloud.firestore {
         allow read: if isAuthenticated() && roomExistsAndActive(appId, roomSlug);
 
         // Member creation:
-        // ONLY authoritative room owner/creator creates initial member doc with role 'owner' during room initialization.
-        // Direct self-membership creation by ordinary participants is strictly DENIED; joining must run via trusted Cloud Functions.
+        // Owner creates initial member doc with role 'owner'
+        // Joining participant creates member doc with role 'member' (cannot forge 'owner')
         allow create: if isAuthenticated()
                       && roomExistsAndActive(appId, roomSlug)
                       && request.resource.data.uid == memberUid
@@ -125,8 +138,10 @@ service cloud.firestore {
                       && request.resource.data.status == 'active'
                       && request.resource.data.joinedAt is number
                       && request.resource.data.joinedAt <= request.time.toMillis()
-                      && isRoomOwner(appId, roomSlug)
-                      && request.resource.data.role == 'owner';
+                      && (
+                        (isRoomOwner(appId, roomSlug) && request.resource.data.role == 'owner') ||
+                        request.resource.data.role == 'member'
+                      );
 
         allow update: if isAuthenticated()
                       && roomExistsAndActive(appId, roomSlug)
