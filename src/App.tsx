@@ -10,6 +10,7 @@ import { RevokeModal } from './components/modals/RevokeModal';
 import { SecurityModal, type InfoModalTab } from './components/modals/SecurityModal';
 import { ShareModal } from './components/modals/ShareModal';
 import { Navbar } from './components/Navbar';
+import { Analytics } from '@vercel/analytics/react';
 import { DEFAULT_EXPIRATION_ID } from './lib/constants';
 import {
   computeKeyMetadata,
@@ -1495,6 +1496,8 @@ export default function App() {
         image={lightboxImage}
         onClose={() => setLightboxImage(null)}
       />
+
+      <Analytics />
     </div>
   );
 }
