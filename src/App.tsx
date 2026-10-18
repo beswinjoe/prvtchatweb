@@ -11,6 +11,7 @@ import { SecurityModal, type InfoModalTab } from './components/modals/SecurityMo
 import { ShareModal } from './components/modals/ShareModal';
 import { Navbar } from './components/Navbar';
 import { Analytics } from '@vercel/analytics/react';
+import { soundManager } from './lib/sound';
 import { DEFAULT_EXPIRATION_ID } from './lib/constants';
 import {
   computeKeyMetadata,
@@ -697,7 +698,15 @@ export default function App() {
       );
 
       if (!cancelled) {
-        setDecryptedMessages(results);
+        setDecryptedMessages((prev) => {
+          if (prev.length > 0 && results.length > prev.length) {
+            const newest = results[results.length - 1];
+            if (newest && !newest.deleted && newest.senderUid !== user?.uid) {
+              soundManager.playReceived();
+            }
+          }
+          return results;
+        });
       }
     };
 
@@ -705,7 +714,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [encryptedMessages, activeCryptoKey, currentView]);
+  }, [encryptedMessages, activeCryptoKey, currentView, user?.uid]);
 
   // --------------------------------------------------------------------------
   // EFFECT 7: Decrypt Active Peers & Typing Indicators
@@ -1061,6 +1070,8 @@ export default function App() {
         deleted: false,
       });
 
+      soundManager.playSent();
+
       setMessageText('');
       setReplyingTo(null);
       setPendingAttachment(null);
@@ -1147,6 +1158,7 @@ export default function App() {
   // CLIPBOARD COPY HELPER
   // --------------------------------------------------------------------------
   const copyToClipboard = async (text: string, idLabel: string) => {
+    soundManager.playAction();
     try {
       await navigator.clipboard.writeText(text);
       setCopiedId(idLabel);

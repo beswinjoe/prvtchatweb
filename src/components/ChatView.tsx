@@ -1,4 +1,5 @@
 import {
+  ArrowDown,
   Check,
   Clock,
   Copy,
@@ -8,16 +9,20 @@ import {
   LogOut,
   Maximize2,
   Reply,
+  Search,
   Send,
   Share2,
   Smile,
   Trash2,
   Users,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { EMOJI_CATEGORIES, QUICK_REACTION_EMOJIS } from '../lib/constants';
 import { formatTimeRemaining } from '../lib/expiry';
+import { soundManager } from '../lib/sound';
 import { formatTimestamp } from '../lib/utils';
 import type {
   ActivePeer,
@@ -106,12 +111,39 @@ export const ChatView: React.FC<ChatViewProps> = ({
   messagesEndRef,
   fileInputRef,
 }) => {
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [soundEnabled, setSoundEnabled] = useState(() => soundManager.isEnabled());
+
   const timeLeft = roomData?.expiresAt ? formatTimeRemaining(roomData.expiresAt, nowTick) : null;
   const isOwner = Boolean(user && roomData && ((roomData.ownerUid || roomData.creatorUid) === user.uid));
   const activeCount = roomMembers.length > 0 ? roomMembers.length : (roomData?.memberCount || 1);
 
+  const toggleSound = () => {
+    const newState = soundManager.toggle();
+    setSoundEnabled(newState);
+  };
+
+  // Filter messages based on in-memory search
+  const displayedMessages = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return decryptedMessages;
+
+    return decryptedMessages.filter((msg) => {
+      const textMatch = msg.decrypted?.text?.toLowerCase().includes(q);
+      const nameMatch = msg.decrypted?.senderName?.toLowerCase().includes(q);
+      const fileMatch = msg.decrypted?.attachment?.originalName?.toLowerCase().includes(q);
+      return textMatch || nameMatch || fileMatch;
+    });
+  }, [decryptedMessages, searchQuery]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
     <div
+      id="chat-view-container"
       className="relative flex-1 flex flex-col h-[calc(100vh-4rem)] max-w-4xl w-full mx-auto px-3 sm:px-6 py-2 overflow-hidden bg-white text-zinc-950 animate-fade-in"
       onDragOver={(e) => {
         e.preventDefault();
@@ -126,19 +158,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
         setIsDraggingOver(false);
         const file = e.dataTransfer.files?.[0];
         if (file && file.type.startsWith('image/')) {
+          soundManager.playAction();
           handleImageFile(file);
         }
       }}
     >
       {/* Sub-header Bar: Room identity, status & quick actions */}
-      <div className="shrink-0 py-2.5 px-4 mb-2 rounded-xl bg-zinc-50/80 border border-zinc-200/80 flex items-center justify-between gap-3 text-xs animate-fade-in-down backdrop-blur-sm">
+      <div className="shrink-0 py-2.5 px-4 mb-2 rounded-xl bg-zinc-50/80 border border-zinc-200/80 flex items-center justify-between gap-3 text-xs animate-fade-in-down backdrop-blur-sm shadow-2xs">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="font-mono font-semibold text-zinc-950 text-sm">
               /{activeSlug}
             </span>
-            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium border border-emerald-200/60">
-              <Lock className="w-3 h-3" />
+            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium border border-emerald-200/60 shadow-2xs">
+              <Lock className="w-3 h-3 text-emerald-600" />
               <span>Encrypted</span>
             </div>
           </div>
@@ -148,7 +181,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             type="button"
             id="chat-members-btn"
             onClick={onOpenMembersModal}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:border-zinc-400 hover:bg-zinc-100 text-zinc-800 transition-all duration-200 cursor-pointer text-xs font-medium hover:shadow-xs"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:border-zinc-400 hover:bg-zinc-100 text-zinc-800 transition-all duration-200 cursor-pointer text-xs font-medium hover:shadow-xs active:scale-98"
             title="View participants, capacity & roles"
           >
             <Users className="w-3.5 h-3.5 text-zinc-600" />
@@ -160,17 +193,70 @@ export const ChatView: React.FC<ChatViewProps> = ({
         <div className="flex items-center gap-1.5">
           {/* Expiration badge */}
           {timeLeft && (
-            <div className="flex items-center gap-1 text-[11px] font-mono text-zinc-700 bg-white px-2.5 py-1 rounded-lg border border-zinc-200">
+            <div className="flex items-center gap-1 text-[11px] font-mono text-zinc-700 bg-white px-2.5 py-1 rounded-lg border border-zinc-200 shadow-2xs">
               <Clock className="w-3 h-3 text-zinc-500" />
               <span>{timeLeft}</span>
             </div>
           )}
 
+          {/* In-Chat Message Search Toggle */}
+          <button
+            type="button"
+            id="chat-search-toggle-btn"
+            onClick={() => {
+              setShowSearch((prev) => !prev);
+              if (showSearch) setSearchQuery('');
+            }}
+            className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer border ${
+              showSearch
+                ? 'bg-zinc-900 text-white border-zinc-900 shadow-2xs'
+                : 'text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 border-transparent hover:border-zinc-200'
+            }`}
+            title="Search messages in this chat"
+            aria-label="Toggle message search"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+
+          {/* Audio Sound Toggle */}
+          <button
+            type="button"
+            id="chat-sound-toggle-btn"
+            onClick={toggleSound}
+            className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer border ${
+              soundEnabled
+                ? 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 border-transparent hover:border-zinc-200'
+                : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 border-transparent hover:border-zinc-200'
+            }`}
+            title={soundEnabled ? 'Mute sound effects' : 'Enable sound effects'}
+            aria-label="Toggle sound effects"
+          >
+            {soundEnabled ? (
+              <Volume2 className="w-4 h-4 text-zinc-700" />
+            ) : (
+              <VolumeX className="w-4 h-4 text-zinc-400" />
+            )}
+          </button>
+
+          {/* Share Invitation Modal Button */}
+          <button
+            type="button"
+            id="chat-open-share-btn"
+            onClick={onOpenShareModal}
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-all duration-200 cursor-pointer border border-transparent hover:border-zinc-200"
+            title="Share room invitation & QR code"
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+
           {/* Quick Copy Link Button */}
           <button
             type="button"
             id="chat-copy-link"
-            onClick={() => copyToClipboard(fullInvitationUri, 'chat-header-uri')}
+            onClick={() => {
+              soundManager.playAction();
+              copyToClipboard(fullInvitationUri, 'chat-header-uri');
+            }}
             className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-all duration-200 cursor-pointer border border-transparent hover:border-zinc-200"
             title="Copy invitation link"
           >
@@ -206,10 +292,46 @@ export const ChatView: React.FC<ChatViewProps> = ({
         </div>
       </div>
 
+      {/* In-Chat Search Bar Drawer */}
+      {showSearch && (
+        <div
+          id="chat-search-bar"
+          className="shrink-0 mb-2 p-2 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center gap-2 animate-slide-up shadow-2xs"
+        >
+          <Search className="w-3.5 h-3.5 text-zinc-400 ml-1.5 shrink-0" />
+          <input
+            id="chat-search-input"
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search decrypted messages or attachments..."
+            className="flex-1 bg-transparent text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
+            autoFocus
+          />
+          {searchQuery && (
+            <span className="text-[10px] font-mono text-zinc-500 bg-zinc-200/70 px-2 py-0.5 rounded-full shrink-0">
+              {displayedMessages.length} {displayedMessages.length === 1 ? 'match' : 'matches'}
+            </span>
+          )}
+          <button
+            type="button"
+            id="chat-search-clear-btn"
+            onClick={() => {
+              if (searchQuery) setSearchQuery('');
+              else setShowSearch(false);
+            }}
+            className="p-1 text-zinc-400 hover:text-zinc-800 rounded-md transition-colors cursor-pointer"
+            aria-label="Clear search"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Drag & Drop Overlay */}
       {isDraggingOver && (
         <div className="absolute inset-4 z-50 rounded-2xl border-2 border-dashed border-zinc-950 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none animate-scale-in">
-          <div className="w-14 h-14 rounded-2xl bg-zinc-100 border border-zinc-200 flex items-center justify-center mb-3">
+          <div className="w-14 h-14 rounded-2xl bg-zinc-100 border border-zinc-200 flex items-center justify-center mb-3 shadow-xs">
             <ImageIcon className="w-7 h-7 text-zinc-800" />
           </div>
           <p className="text-sm font-semibold text-zinc-950">
@@ -222,38 +344,54 @@ export const ChatView: React.FC<ChatViewProps> = ({
       )}
 
       {/* Messages Stream */}
-      <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-3 space-y-4">
-        {decryptedMessages.length === 0 ? (
-          /* Empty State for Newly Created Chat */
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4 my-auto animate-fade-in-up">
-            <div className="w-14 h-14 rounded-2xl bg-zinc-50 border border-zinc-200 text-zinc-900 flex items-center justify-center animate-float">
-              <Lock className="w-7 h-7 stroke-[1.8]" />
-            </div>
-
-            <div className="space-y-2 max-w-sm">
-              <h3 className="text-base font-bold text-zinc-950 tracking-tight">
-                This conversation is encrypted & ephemeral
-              </h3>
-              <p className="text-xs text-zinc-500 leading-relaxed">
-                Messages, images, and reactions are sealed with AES-256-GCM.
-                Keys remain in the URL fragment and are never stored on any server.
-              </p>
-            </div>
-
-            <div className="pt-2">
+      <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-3 space-y-4 relative">
+        {displayedMessages.length === 0 ? (
+          searchQuery ? (
+            /* Search No Results */
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2 my-auto animate-fade-in text-zinc-500">
+              <Search className="w-8 h-8 text-zinc-300 mb-1" />
+              <p className="text-xs font-medium text-zinc-700">No matching messages found</p>
+              <p className="text-[11px] text-zinc-400">Try searching for a different keyword or filename.</p>
               <button
                 type="button"
-                id="chat-empty-share"
-                onClick={onOpenShareModal}
-                className="px-5 py-2.5 rounded-xl btn-black text-xs font-semibold flex items-center gap-2 cursor-pointer"
+                onClick={() => setSearchQuery('')}
+                className="mt-2 text-xs font-semibold text-zinc-900 underline cursor-pointer"
               >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>Share Invitation Link</span>
+                Clear filter
               </button>
             </div>
-          </div>
+          ) : (
+            /* Empty State for Newly Created Chat */
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4 my-auto animate-fade-in-up">
+              <div className="w-14 h-14 rounded-2xl bg-zinc-50 border border-zinc-200 text-zinc-900 flex items-center justify-center animate-float shadow-xs">
+                <Lock className="w-7 h-7 stroke-[1.8]" />
+              </div>
+
+              <div className="space-y-2 max-w-sm">
+                <h3 className="text-base font-bold text-zinc-950 tracking-tight">
+                  This conversation is encrypted & ephemeral
+                </h3>
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Messages, images, and reactions are sealed with AES-256-GCM.
+                  Keys remain in the URL fragment and are never stored on any server.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  id="chat-empty-share"
+                  onClick={onOpenShareModal}
+                  className="px-5 py-2.5 rounded-xl btn-black text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-md active:scale-98"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Share Invitation Link / QR Code</span>
+                </button>
+              </div>
+            </div>
+          )
         ) : (
-          decryptedMessages.map((msg) => {
+          displayedMessages.map((msg) => {
             const isMe = user ? msg.senderUid === user.uid : false;
             const senderName = msg.decrypted?.senderName || 'Anonymous';
 
@@ -273,14 +411,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
             return (
               <div
                 key={msg.id}
+                id={`msg-${msg.id}`}
                 className={`group flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1 ${isMe ? 'message-bubble-self' : 'message-bubble'}`}
               >
                 {/* Sender Identity & Time */}
                 <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 px-1">
                   {!isMe && (
-                    <span
-                      className="font-semibold text-zinc-800"
-                    >
+                    <span className="font-semibold text-zinc-800">
                       {senderName}
                     </span>
                   )}
@@ -373,10 +510,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         <button
                           key={emoji}
                           type="button"
-                          onClick={() => handleToggleReaction(msg, emoji)}
+                          onClick={() => {
+                            soundManager.playAction();
+                            handleToggleReaction(msg, emoji);
+                          }}
                           className={`px-2 py-0.5 rounded-full text-[11px] flex items-center gap-1 transition-all duration-200 cursor-pointer border ${
                             hasReacted
-                              ? 'bg-zinc-950 border-zinc-950 text-white scale-105'
+                              ? 'bg-zinc-950 border-zinc-950 text-white scale-105 shadow-2xs font-medium'
                               : 'bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-50 hover:scale-105'
                           }`}
                         >
@@ -413,7 +553,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       <div className="shrink-0 pt-2 pb-1 bg-white">
         {/* Reply Reference Preview */}
         {replyingTo && (
-          <div className="mb-2 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between gap-2 text-xs animate-slide-up">
+          <div className="mb-2 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between gap-2 text-xs animate-slide-up shadow-2xs">
             <div className="flex items-center gap-2 truncate">
               <CornerDownRight className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
               <span className="text-zinc-500">
@@ -439,12 +579,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
         {/* Pending Image Attachment Preview */}
         {pendingAttachment && (
-          <div className="mb-2 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between gap-3 text-xs animate-slide-up">
+          <div className="mb-2 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between gap-3 text-xs animate-slide-up shadow-2xs">
             <div className="flex items-center gap-3">
               <img
                 src={pendingAttachment.dataUrl}
                 alt="Preview"
-                className="w-12 h-12 object-cover rounded-lg border border-zinc-200"
+                className="w-12 h-12 object-cover rounded-lg border border-zinc-200 shadow-2xs"
               />
               <div>
                 <div className="font-medium text-zinc-900 truncate max-w-xs">
@@ -467,7 +607,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
         {/* Upload Error Banner */}
         {uploadError && (
-          <div className="mb-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between animate-fade-in">
+          <div className="mb-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between animate-fade-in font-medium">
             <span>{uploadError}</span>
             <button
               type="button"
@@ -479,9 +619,41 @@ export const ChatView: React.FC<ChatViewProps> = ({
           </div>
         )}
 
-        {/* Quick Emoji Picker Drawer */}
+        {/* Quick Reaction Bar: 1-click emoji insertions */}
+        <div className="flex items-center gap-1 pb-1.5 px-1 overflow-x-auto scrollbar-none text-xs">
+          <span className="text-[10px] text-zinc-400 font-medium mr-0.5 shrink-0 uppercase tracking-wider">
+            Quick:
+          </span>
+          {['👍', '❤️', '🔥', '😂', '🔒', '⚡', '🤫', '🚀'].map((em) => (
+            <button
+              key={em}
+              type="button"
+              onClick={() => {
+                soundManager.playAction();
+                setMessageText((prev) => prev + em);
+              }}
+              className="px-1.5 py-0.5 rounded-md hover:bg-zinc-100 hover:scale-115 transition-all text-sm cursor-pointer"
+              title={`Insert ${em}`}
+            >
+              {em}
+            </button>
+          ))}
+          <div className="flex-1" />
+          {decryptedMessages.length > 5 && (
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              className="text-[11px] text-zinc-500 hover:text-zinc-900 flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+            >
+              <ArrowDown className="w-3 h-3" />
+              <span>Bottom</span>
+            </button>
+          )}
+        </div>
+
+        {/* Emoji Picker Drawer */}
         {showEmojiPicker && (
-          <div className="mb-2 p-3 rounded-2xl bg-white shadow-lg border border-zinc-200 max-h-48 overflow-y-auto space-y-2 animate-slide-up">
+          <div className="mb-2 p-3 rounded-2xl bg-white shadow-xl border border-zinc-200 max-h-48 overflow-y-auto space-y-2 animate-slide-up">
             <div className="flex items-center justify-between pb-1 border-b border-zinc-100">
               <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
                 Select Emoji
@@ -503,6 +675,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   key={`${emo}-${idx}`}
                   type="button"
                   onClick={() => {
+                    soundManager.playAction();
                     setMessageText((prev) => prev + emo);
                     setShowEmojiPicker(false);
                   }}
@@ -517,6 +690,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
         {/* Main Input Bar */}
         <form
+          id="chat-composer-form"
           onSubmit={(e) => {
             e.preventDefault();
             handleSendMessage(e);
@@ -531,7 +705,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) handleImageFile(file);
+              if (file) {
+                soundManager.playAction();
+                handleImageFile(file);
+              }
               e.target.value = '';
             }}
           />
@@ -583,7 +760,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             type="submit"
             id="chat-send-btn"
             disabled={(!messageText.trim() && !pendingAttachment) || isSending}
-            className="py-2 px-3.5 rounded-xl btn-black text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="py-2 px-3.5 rounded-xl btn-black text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs active:scale-98"
           >
             {isSending ? (
               <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />

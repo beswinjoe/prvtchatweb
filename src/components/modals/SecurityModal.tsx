@@ -61,12 +61,16 @@ export const SecurityModal: React.FC<SecurityModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-zinc-950/40 backdrop-blur-xs animate-in fade-in duration-150"
+      id="security-modal-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-zinc-950/60 backdrop-blur-md animate-fade-in"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="relative w-full max-w-2xl max-h-[88vh] flex flex-col rounded-2xl bg-white border border-zinc-200 shadow-2xl text-left text-zinc-950 overflow-hidden">
+      <div
+        id="security-modal-dialog"
+        className="relative w-full max-w-2xl max-h-[88vh] flex flex-col rounded-2xl bg-white border border-zinc-200/80 shadow-2xl text-left text-zinc-950 overflow-hidden animate-scale-in"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-zinc-100 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -95,6 +99,7 @@ export const SecurityModal: React.FC<SecurityModalProps> = ({
             </div>
           </div>
           <button
+            id="security-modal-close-btn"
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-colors cursor-pointer"
