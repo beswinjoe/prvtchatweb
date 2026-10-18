@@ -4,6 +4,7 @@ import {
   Code2,
   ExternalLink,
   Shield,
+  Sparkles,
 } from 'lucide-react';
 import React from 'react';
 
@@ -19,82 +20,107 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onOpenSecurityModal,
 }) => {
   return (
-    <div className="relative flex-1 flex flex-col justify-between bg-[#5B9EEA] text-[#0B132B]">
+    <div className="relative flex-1 flex flex-col justify-between bg-hero-mesh text-[#0B132B] overflow-hidden">
+      {/* Ambient Background Orbs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div
+          className="absolute -top-24 -right-24 w-96 h-96 rounded-full opacity-20"
+          style={{
+            background: 'radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 70%)',
+          }}
+        />
+        <div
+          className="absolute -bottom-32 -left-32 w-[28rem] h-[28rem] rounded-full opacity-15"
+          style={{
+            background: 'radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%)',
+          }}
+        />
+      </div>
+
       {/* Main Hero Content */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 text-center max-w-4xl mx-auto pt-8 pb-14 sm:pt-12 sm:pb-20">
-        {/* Top Centered Pill Badge */}
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white text-[#0B132B] text-xs font-medium mb-8 shadow-xs border border-white/60">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span>Local-First Private Workspace</span>
-        </div>
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 sm:px-6 text-center max-w-4xl mx-auto pt-8 pb-14 sm:pt-12 sm:pb-20">
+        <div className="stagger-children">
+          {/* Top Centered Pill Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-surface text-[#0B132B] text-xs font-medium mb-8 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse-glow" />
+            <span>End-to-End Encrypted Workspace</span>
+            <Sparkles className="w-3.5 h-3.5 text-amber-500 opacity-70" />
+          </div>
 
-        {/* Big Bold Headline */}
-        <h1 className="text-4xl sm:text-6xl md:text-[5rem] font-bold tracking-tight text-[#0B132B] max-w-4xl leading-[1.04] mb-6">
-          Your words. Your privacy.<br />
-          One clear picture.
-        </h1>
+          {/* Big Bold Headline */}
+          <h1 className="text-4xl sm:text-6xl md:text-[5rem] font-bold tracking-tight text-[#0B132B] max-w-4xl leading-[1.04] mb-6">
+            Your words. Your privacy.
+            <br />
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#0B132B] via-[#1a2844] to-[#0B132B]">
+              One clear picture.
+            </span>
+          </h1>
 
-        {/* Calm Supporting Paragraph */}
-        <p className="text-base sm:text-lg md:text-xl text-[#142347] max-w-2xl font-normal leading-relaxed mb-10">
-          PRVTCHAT brings your conversations, encrypted notes, and temporary rooms into a calm, private workspace.
-          Built for absolute precision with zero server logs or bank credentials required.
-        </p>
+          {/* Calm Supporting Paragraph */}
+          <p className="text-base sm:text-lg md:text-xl text-[#142347]/85 max-w-2xl font-normal leading-relaxed mb-10 mx-auto">
+            PRVTCHAT brings your conversations, encrypted notes, and temporary rooms into a calm, private workspace.
+            Built for absolute precision with zero server logs or bank credentials required.
+          </p>
 
-        {/* Two Large Pill Buttons */}
-        <div className="flex flex-col sm:flex-row items-center gap-3.5 w-full max-w-md justify-center mb-6">
-          <button
-            type="button"
-            onClick={onOpenCreateModal}
-            className="w-full sm:w-auto px-7 py-3.5 btn-pill-black text-sm font-semibold flex items-center justify-center gap-3 cursor-pointer group shadow-sm"
-          >
-            <span>Open Workspace</span>
-            <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition-colors">
-              <ArrowRight className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+          {/* Two Large Pill Buttons */}
+          <div className="flex flex-col sm:flex-row items-center gap-3.5 w-full max-w-md justify-center mb-6 mx-auto">
+            <button
+              type="button"
+              id="hero-open-workspace"
+              onClick={onOpenCreateModal}
+              className="w-full sm:w-auto px-7 py-3.5 btn-pill-black text-sm font-semibold flex items-center justify-center gap-3 cursor-pointer group shadow-sm"
+            >
+              <span>Open Workspace</span>
+              <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition-colors">
+                <ArrowRight className="w-3.5 h-3.5 text-white stroke-[2.5] group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </button>
+
+            <button
+              type="button"
+              id="hero-how-it-works"
+              onClick={onOpenSecurityModal}
+              className="w-full sm:w-auto px-7 py-3.5 btn-pill-white text-sm font-semibold cursor-pointer shadow-sm"
+            >
+              <span>See how it works</span>
+            </button>
+          </div>
+
+          {/* Subtle join link */}
+          <p className="text-xs text-[#142347]/75 mb-12">
+            Already received an invitation?{' '}
+            <button
+              type="button"
+              id="hero-join-link"
+              onClick={onOpenJoinModal}
+              className="underline font-semibold text-[#0B132B] hover:opacity-80 cursor-pointer transition-opacity"
+            >
+              Join room directly
+            </button>
+          </p>
+
+          {/* Bottom Three White Pill Chips */}
+          <div className="flex flex-wrap items-center justify-center gap-3 w-full max-w-3xl mx-auto">
+            <div className="pill-chip">
+              <Check className="w-4 h-4 text-emerald-600 stroke-[2.5]" />
+              <span>No bank connection required</span>
             </div>
-          </button>
 
-          <button
-            type="button"
-            onClick={onOpenSecurityModal}
-            className="w-full sm:w-auto px-7 py-3.5 btn-pill-white text-sm font-semibold cursor-pointer shadow-sm"
-          >
-            <span>See how it works</span>
-          </button>
-        </div>
+            <div className="pill-chip">
+              <Check className="w-4 h-4 text-emerald-600 stroke-[2.5]" />
+              <span>Local storage on your device</span>
+            </div>
 
-        {/* Subtle join link */}
-        <p className="text-xs text-[#142347]/75 mb-12">
-          Already received an invitation?{' '}
-          <button
-            type="button"
-            onClick={onOpenJoinModal}
-            className="underline font-semibold text-[#0B132B] hover:opacity-80 cursor-pointer"
-          >
-            Join room directly
-          </button>
-        </p>
-
-        {/* Bottom Three White Pill Chips */}
-        <div className="flex flex-wrap items-center justify-center gap-3 w-full max-w-3xl">
-          <div className="pill-chip">
-            <Check className="w-4 h-4 text-emerald-600 stroke-[2.5]" />
-            <span>No bank connection required</span>
-          </div>
-
-          <div className="pill-chip">
-            <Check className="w-4 h-4 text-emerald-600 stroke-[2.5]" />
-            <span>Local storage on your device</span>
-          </div>
-
-          <div className="pill-chip">
-            <Check className="w-4 h-4 text-emerald-600 stroke-[2.5]" />
-            <span>Zero-Knowledge Web Crypto ready</span>
+            <div className="pill-chip">
+              <Check className="w-4 h-4 text-emerald-600 stroke-[2.5]" />
+              <span>Zero-Knowledge Web Crypto ready</span>
+            </div>
           </div>
         </div>
       </main>
 
       {/* Seamless Minimal Bottom Bar */}
-      <footer className="py-5 px-6 bg-[#5B9EEA]">
+      <footer className="relative z-10 py-5 px-6">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#142347]/75">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#0B132B]/60" />
@@ -106,6 +132,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
           <div className="flex items-center gap-5 font-medium">
             <button
               type="button"
+              id="footer-security-link"
               onClick={onOpenSecurityModal}
               className="hover:text-[#0B132B] transition-colors cursor-pointer flex items-center gap-1.5"
             >

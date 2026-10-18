@@ -1287,9 +1287,9 @@ export default function App() {
 
   if (firebaseConfigError) {
     return (
-      <div className="min-h-screen bg-[#5B9EEA] text-[#0B132B] flex items-center justify-center p-6">
-        <div className="max-w-lg w-full bg-white border border-black/10 rounded-3xl p-8 space-y-6 shadow-2xl text-left">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
+      <div className="min-h-screen bg-hero-mesh text-[#0B132B] flex items-center justify-center p-6">
+        <div className="max-w-lg w-full bg-white border border-black/5 rounded-2xl p-8 space-y-6 shadow-xl text-left animate-scale-in">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center">
             <span className="font-bold text-xl">!</span>
           </div>
           <div className="space-y-2">
@@ -1314,7 +1314,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen font-sans antialiased flex flex-col ${
+      className={`min-h-screen font-sans antialiased flex flex-col transition-colors duration-300 ${
         currentView === 'landing'
           ? 'bg-[#5B9EEA] text-[#0B132B]'
           : 'bg-[#F4F7FB] text-zinc-900'
@@ -1339,18 +1339,20 @@ export default function App() {
       {/* Main Views */}
       {/* Instant connecting screen when opening an invite link */}
       {currentView === 'landing' && isJoiningFromUrl && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-5">
-          <div className="w-20 h-20 rounded-3xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-xl">
-            <svg className="w-10 h-10 text-white animate-pulse" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25z" />
-            </svg>
-          </div>
-          <div className="text-center space-y-2">
-            <p className="text-white text-lg font-semibold tracking-tight">Unlocking Private Chat</p>
-            <p className="text-white/60 text-xs">Establishing encrypted connection…</p>
-          </div>
-          <div className="w-48 h-1.5 rounded-full bg-white/10 overflow-hidden">
-            <div className="h-full w-2/3 bg-white/50 rounded-full animate-pulse" />
+        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6 bg-hero-mesh">
+          <div className="stagger-children flex flex-col items-center gap-5">
+            <div className="w-20 h-20 rounded-3xl glass border border-white/25 flex items-center justify-center shadow-xl animate-float">
+              <svg className="w-10 h-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25z" />
+              </svg>
+            </div>
+            <div className="text-center space-y-2">
+              <p className="text-white text-lg font-semibold tracking-tight">Unlocking Private Chat</p>
+              <p className="text-white/60 text-xs">Establishing encrypted connection…</p>
+            </div>
+            <div className="w-52 h-1 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-full w-1/3 bg-white/60 rounded-full animate-progress" />
+            </div>
           </div>
         </div>
       )}

@@ -39,28 +39,30 @@ export class ErrorBoundary extends Component<Props, State> {
   public override render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-[#5B9EEA] text-[#0B132B] flex items-center justify-center p-6">
-          <div className="max-w-md w-full bg-white border border-black/10 rounded-3xl p-7 text-center space-y-5 shadow-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-6 h-6 stroke-[2.2]" />
+        <div className="min-h-screen bg-hero-mesh text-[#0B132B] flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-white border border-black/5 rounded-2xl p-7 text-center space-y-5 shadow-xl animate-scale-in">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 text-rose-500 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-7 h-7 stroke-[1.8]" />
             </div>
             <div className="space-y-2">
               <h2 className="text-xl font-bold text-[#0B132B] tracking-tight">Something went wrong</h2>
-              <p className="text-xs text-zinc-600 leading-relaxed">
+              <p className="text-xs text-zinc-600 leading-relaxed max-w-sm mx-auto">
                 {this.state.error?.message || 'An unexpected rendering error occurred. Your private keys and sensitive content were not transmitted.'}
               </p>
             </div>
             <div className="flex items-center justify-center gap-3 pt-2">
               <button
                 type="button"
+                id="error-return-home"
                 onClick={this.handleReturnHome}
-                className="inline-flex items-center gap-2 py-2.5 px-4 rounded-full border border-zinc-200 text-zinc-800 text-xs font-semibold hover:bg-zinc-50 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 py-2.5 px-4 rounded-xl btn-outline text-xs font-semibold cursor-pointer transition-all duration-200"
               >
                 <Home className="w-3.5 h-3.5" />
                 <span>Return Home</span>
               </button>
               <button
                 type="button"
+                id="error-reload"
                 onClick={() => {
                   this.setState({ hasError: false, error: null });
                   window.location.reload();

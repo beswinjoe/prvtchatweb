@@ -6,10 +6,37 @@
   }
   
   :root {
+    /* Curated Premium Color Palette */
     --bg-hero: #5B9EEA;
+    --bg-hero-dark: #4A8BD9;
     --bg-canvas: #F0F5FD;
+    --bg-surface: #FFFFFF;
+    --bg-surface-elevated: #FAFBFD;
+    
     --text-headline: #0B132B;
     --text-body: #1E293B;
+    --text-muted: #64748B;
+    --text-subtle: #94A3B8;
+    
+    --accent-primary: #3B82F6;
+    --accent-primary-hover: #2563EB;
+    --accent-emerald: #10B981;
+    --accent-amber: #F59E0B;
+    --accent-rose: #F43F5E;
+    
+    --border-light: #E2E8F0;
+    --border-default: #CBD5E1;
+    
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-sm: 0 2px 8px -2px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 8px 30px -6px rgba(0, 0, 0, 0.12);
+    --shadow-xl: 0 16px 50px -12px rgba(0, 0, 0, 0.15);
+    
+    /* Animation timing */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
   }
 
   html, body, #root {
@@ -20,74 +47,322 @@
     color: #0B132B;
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     letter-spacing: -0.015em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   code, pre, kbd, samp {
     font-family: 'JetBrains Mono', ui-monospace, monospace;
   }
 
-  /* Clean subtle scrollbar */
+  /* Premium thin scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.15);
+    background: rgba(0, 0, 0, 0.12);
     border-radius: 9999px;
+    transition: background 0.2s;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.25);
+    background: rgba(0, 0, 0, 0.22);
+  }
+
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
   }
 }
 
-/* Custom Hero Background */
+/* ========================================================================
+   KEYFRAME ANIMATIONS
+   ======================================================================== */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes progressIndeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes backdropFadeIn {
+  from { opacity: 0; backdrop-filter: blur(0px); }
+  to { opacity: 1; backdrop-filter: blur(8px); }
+}
+
+/* ========================================================================
+   ANIMATION UTILITY CLASSES
+   ======================================================================== */
+
+.animate-fade-in {
+  animation: fadeIn 0.3s var(--ease-out-expo) both;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s var(--ease-out-expo) both;
+}
+
+.animate-fade-in-down {
+  animation: fadeInDown 0.35s var(--ease-out-expo) both;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s var(--ease-spring) both;
+}
+
+.animate-slide-up {
+  animation: slideInFromBottom 0.4s var(--ease-out-expo) both;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradientShift 4s ease infinite;
+}
+
+.animate-modal-enter {
+  animation: modalEnter 0.25s var(--ease-out-expo) both;
+}
+
+.animate-backdrop {
+  animation: backdropFadeIn 0.2s ease both;
+}
+
+.animate-progress {
+  animation: progressIndeterminate 1.5s ease-in-out infinite;
+}
+
+/* Staggered child animations */
+.stagger-children > * {
+  opacity: 0;
+  animation: fadeInUp 0.5s var(--ease-out-expo) both;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 300ms; }
+
+/* ========================================================================
+   GLASSMORPHISM & SURFACE EFFECTS
+   ======================================================================== */
+
+.glass {
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.glass-dark {
+  background: rgba(11, 15, 25, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-surface {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+/* ========================================================================
+   PREMIUM HERO BACKGROUND
+   ======================================================================== */
+
 .bg-hero-blue {
   background-color: #5B9EEA;
 }
 
-/* Pill Button Styles */
+.bg-hero-gradient {
+  background: linear-gradient(135deg, #5B9EEA 0%, #4A8BD9 40%, #6BA3EC 100%);
+}
+
+/* Animated mesh gradient for landing hero */
+.bg-hero-mesh {
+  background: 
+    radial-gradient(ellipse at 20% 50%, rgba(123, 185, 255, 0.35) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(91, 158, 234, 0.25) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 80%, rgba(74, 139, 217, 0.3) 0%, transparent 50%),
+    linear-gradient(135deg, #5B9EEA 0%, #4A8BD9 50%, #5B9EEA 100%);
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease infinite;
+}
+
+/* ========================================================================
+   PILL BUTTON STYLES (ENHANCED)
+   ======================================================================== */
+
 .btn-pill-black {
-  background-color: #0B0F19;
+  background: linear-gradient(135deg, #0B0F19 0%, #1a1f2e 100%);
   color: #FFFFFF;
   border-radius: 9999px;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 12px -2px rgba(11, 15, 25, 0.25);
+  transition: all 0.2s var(--ease-out-expo);
+  box-shadow: 0 4px 14px -3px rgba(11, 15, 25, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-pill-black::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
 .btn-pill-black:hover {
-  background-color: #182234;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px -2px rgba(11, 15, 25, 0.3);
+  background: linear-gradient(135deg, #141a2a 0%, #232b3d 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -4px rgba(11, 15, 25, 0.35);
+}
+
+.btn-pill-black:hover::after {
+  opacity: 1;
 }
 
 .btn-pill-black:active {
   transform: translateY(0);
+  box-shadow: 0 2px 8px -2px rgba(11, 15, 25, 0.25);
 }
 
 .btn-pill-white {
-  background-color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.95);
   color: #0B0F19;
   border-radius: 9999px;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s var(--ease-out-expo);
+  box-shadow: 0 4px 14px -3px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .btn-pill-white:hover {
-  background-color: #F8FAFC;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px -2px rgba(0, 0, 0, 0.12);
+  background: #FFFFFF;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.12);
 }
 
 .btn-pill-white:active {
   transform: translateY(0);
 }
 
-/* Bottom Feature Chips */
+/* ========================================================================
+   BOTTOM FEATURE CHIPS (ENHANCED)
+   ======================================================================== */
+
 .pill-chip {
-  background-color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   color: #0B132B;
   border-radius: 9999px;
   padding: 0.55rem 1.1rem;
@@ -98,33 +373,55 @@
   align-items: center;
   gap: 0.4rem;
   white-space: nowrap;
+  transition: all 0.2s var(--ease-out-expo);
+  border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
-/* Clean Card Surface */
+.pill-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+/* ========================================================================
+   CARD SURFACES (ENHANCED)
+   ======================================================================== */
+
 .card-surface {
   background: #FFFFFF;
   border-radius: 1.5rem;
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
-/* Standard Solid Dark & Outline Buttons for Modals and Views */
+.card-clean {
+  background: #FFFFFF;
+  border: 1px solid var(--border-light);
+  border-radius: 1.25rem;
+}
+
+/* ========================================================================
+   STANDARD BUTTON STYLES (ENHANCED)
+   ======================================================================== */
+
 .btn-black {
-  background-color: #0B0F19;
+  background: linear-gradient(135deg, #0B0F19 0%, #1a1f2e 100%);
   color: #FFFFFF;
   border: 1px solid #0B0F19;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s var(--ease-out-expo);
+  box-shadow: 0 2px 6px -1px rgba(11, 15, 25, 0.2);
 }
 
 .btn-black:hover:not(:disabled) {
-  background-color: #182234;
+  background: linear-gradient(135deg, #141a2a 0%, #232b3d 100%);
   border-color: #182234;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px -2px rgba(11, 15, 25, 0.25);
+  box-shadow: 0 4px 14px -3px rgba(11, 15, 25, 0.3);
 }
 
 .btn-black:active:not(:disabled) {
   transform: translateY(0);
+  box-shadow: 0 1px 4px -1px rgba(11, 15, 25, 0.2);
 }
 
 .btn-black:disabled {
@@ -136,19 +433,192 @@
   background-color: #FFFFFF;
   color: #18181B;
   border: 1px solid #E4E4E7;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s var(--ease-out-expo);
 }
 
 .btn-outline:hover:not(:disabled) {
   background-color: #F4F4F5;
   border-color: #D4D4D8;
+  transform: translateY(-0.5px);
 }
 
 .btn-outline:active:not(:disabled) {
   background-color: #E4E4E7;
+  transform: translateY(0);
 }
 
 .btn-outline:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn-danger {
+  background-color: #FFF1F2;
+  color: #BE123C;
+  border: 1px solid #FECDD3;
+  transition: all 0.2s var(--ease-out-expo);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #FFE4E6;
+  border-color: #FDA4AF;
+}
+
+/* ========================================================================
+   TYPING INDICATOR
+   ======================================================================== */
+
+.typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.typing-indicator span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #64748B;
+  animation: typingBounce 1.4s ease-in-out infinite;
+}
+
+.typing-indicator span:nth-child(1) { animation-delay: 0s; }
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+/* ========================================================================
+   MESSAGE BUBBLE ANIMATIONS
+   ======================================================================== */
+
+.message-bubble {
+  animation: fadeInUp 0.3s var(--ease-out-expo) both;
+}
+
+.message-bubble-self {
+  animation: fadeInUp 0.25s var(--ease-out-expo) both;
+}
+
+/* ========================================================================
+   MODAL BACKDROP & CONTENT
+   ======================================================================== */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(11, 19, 43, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: backdropFadeIn 0.2s ease both;
+}
+
+.modal-content {
+  animation: modalEnter 0.25s var(--ease-out-expo) both;
+}
+
+/* ========================================================================
+   ENHANCED INPUT FOCUS STYLES
+   ======================================================================== */
+
+.input-enhanced {
+  transition: all 0.2s var(--ease-out-expo);
+  border: 1px solid var(--border-light);
+}
+
+.input-enhanced:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  outline: none;
+}
+
+/* ========================================================================
+   SHIMMER LOADING EFFECT
+   ======================================================================== */
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ========================================================================
+   ONLINE STATUS DOT
+   ======================================================================== */
+
+.status-dot-online {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent-emerald);
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+/* ========================================================================
+   TOOLTIP UTILITY
+   ======================================================================== */
+
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: #0B0F19;
+  color: white;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.15s var(--ease-out-expo);
+  z-index: 100;
+}
+
+[data-tooltip]:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ========================================================================
+   FOCUS VISIBLE RING (ACCESSIBILITY)
+   ======================================================================== */
+
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* ========================================================================
+   REDUCED MOTION
+   ======================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

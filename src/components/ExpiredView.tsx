@@ -20,24 +20,24 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
   const isKeyMismatch = expiredReason === 'invalid_key';
 
   return (
-    <main className="relative flex-1 flex items-center justify-center p-4 sm:p-6 bg-white text-zinc-950">
-      <div className="max-w-md w-full card-clean rounded-2xl p-6 sm:p-8 text-center space-y-6 shadow-sm animate-in zoom-in-95 duration-150">
+    <main className="relative flex-1 flex items-center justify-center p-4 sm:p-6 bg-gradient-to-b from-white to-zinc-50 text-zinc-950">
+      <div className="max-w-md w-full card-clean rounded-2xl p-6 sm:p-8 text-center space-y-6 shadow-md animate-scale-in">
         {/* Status Icon */}
         <div
-          className={`w-12 h-12 rounded-xl flex items-center justify-center mx-auto ${
+          className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto transition-colors ${
             isRevoked
-              ? 'bg-rose-50 border border-rose-200 text-rose-700'
+              ? 'bg-rose-50 border border-rose-200 text-rose-600'
               : isKeyMismatch
-              ? 'bg-amber-50 border border-amber-200 text-amber-700'
-              : 'bg-zinc-100 border border-zinc-200 text-zinc-900'
+              ? 'bg-amber-50 border border-amber-200 text-amber-600'
+              : 'bg-zinc-50 border border-zinc-200 text-zinc-700'
           }`}
         >
           {isRevoked ? (
-            <Flame className="w-6 h-6 stroke-[2]" />
+            <Flame className="w-7 h-7 stroke-[1.8]" />
           ) : isKeyMismatch ? (
-            <ShieldAlert className="w-6 h-6 stroke-[2]" />
+            <ShieldAlert className="w-7 h-7 stroke-[1.8]" />
           ) : (
-            <Lock className="w-6 h-6 stroke-[2]" />
+            <Lock className="w-7 h-7 stroke-[1.8]" />
           )}
         </div>
 
@@ -46,9 +46,9 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
           <div
             className={`text-xs font-mono uppercase tracking-wider font-semibold ${
               isRevoked
-                ? 'text-rose-700'
+                ? 'text-rose-600'
                 : isKeyMismatch
-                ? 'text-amber-700'
+                ? 'text-amber-600'
                 : 'text-zinc-500'
             }`}
           >
@@ -96,9 +96,10 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <button
             type="button"
+            id="expired-new-chat"
             onClick={onStartNewChat || onReturnHome}
             className="w-full py-3 px-4 rounded-xl btn-black text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
           >
@@ -108,6 +109,7 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
 
           <a
             href="/"
+            id="expired-return-home"
             onClick={() => {
               try {
                 if (onReturnHome) onReturnHome();
@@ -117,7 +119,7 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
               // Always ensure full clean navigation to root homepage
               window.location.href = '/';
             }}
-            className="w-full py-2.5 px-4 rounded-xl btn-outline text-xs font-medium cursor-pointer flex items-center justify-center no-underline text-zinc-900"
+            className="w-full py-2.5 px-4 rounded-xl btn-outline text-xs font-medium cursor-pointer flex items-center justify-center no-underline text-zinc-900 transition-all duration-200"
           >
             Return to Homepage
           </a>

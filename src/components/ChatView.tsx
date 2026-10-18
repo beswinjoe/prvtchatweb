@@ -112,7 +112,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   return (
     <div
-      className="relative flex-1 flex flex-col h-[calc(100vh-4rem)] max-w-4xl w-full mx-auto px-3 sm:px-6 py-2 overflow-hidden bg-white text-zinc-950"
+      className="relative flex-1 flex flex-col h-[calc(100vh-4rem)] max-w-4xl w-full mx-auto px-3 sm:px-6 py-2 overflow-hidden bg-white text-zinc-950 animate-fade-in"
       onDragOver={(e) => {
         e.preventDefault();
         setIsDraggingOver(true);
@@ -131,13 +131,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
       }}
     >
       {/* Sub-header Bar: Room identity, status & quick actions */}
-      <div className="shrink-0 py-2.5 px-4 mb-2 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between gap-3 text-xs">
+      <div className="shrink-0 py-2.5 px-4 mb-2 rounded-xl bg-zinc-50/80 border border-zinc-200/80 flex items-center justify-between gap-3 text-xs animate-fade-in-down backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="font-mono font-semibold text-zinc-950 text-sm">
               /{activeSlug}
             </span>
-            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-200/80 text-zinc-800 text-[11px] font-medium">
+            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium border border-emerald-200/60">
               <Lock className="w-3 h-3" />
               <span>Encrypted</span>
             </div>
@@ -146,8 +146,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
           {/* Authoritative Member Counter & Manager Button */}
           <button
             type="button"
+            id="chat-members-btn"
             onClick={onOpenMembersModal}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:border-zinc-400 hover:bg-zinc-100 text-zinc-800 transition-colors cursor-pointer text-xs font-medium"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:border-zinc-400 hover:bg-zinc-100 text-zinc-800 transition-all duration-200 cursor-pointer text-xs font-medium hover:shadow-xs"
             title="View participants, capacity & roles"
           >
             <Users className="w-3.5 h-3.5 text-zinc-600" />
@@ -168,8 +169,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
           {/* Quick Copy Link Button */}
           <button
             type="button"
+            id="chat-copy-link"
             onClick={() => copyToClipboard(fullInvitationUri, 'chat-header-uri')}
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-colors cursor-pointer border border-transparent hover:border-zinc-200"
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-all duration-200 cursor-pointer border border-transparent hover:border-zinc-200"
             title="Copy invitation link"
           >
             {copiedId === 'chat-header-uri' ? (
@@ -183,8 +185,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
           {isOwner ? (
             <button
               type="button"
+              id="chat-destroy-btn"
               onClick={onOpenRevokeConfirm}
-              className="p-1.5 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer border border-transparent hover:border-rose-200"
+              className="p-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 transition-all duration-200 cursor-pointer border border-transparent hover:border-rose-200"
               title="Destroy this conversation (Owner only)"
             >
               <Trash2 className="w-4 h-4" />
@@ -192,8 +195,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
           ) : (
             <button
               type="button"
+              id="chat-leave-btn"
               onClick={onLeaveRoom}
-              className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-600 hover:bg-zinc-100 transition-colors cursor-pointer border border-transparent hover:border-zinc-200"
+              className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-600 hover:bg-zinc-100 transition-all duration-200 cursor-pointer border border-transparent hover:border-zinc-200"
               title="Leave conversation"
             >
               <LogOut className="w-4 h-4" />
@@ -204,8 +208,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
       {/* Drag & Drop Overlay */}
       {isDraggingOver && (
-        <div className="absolute inset-4 z-50 rounded-2xl border-2 border-dashed border-zinc-950 bg-white/95 backdrop-blur-xs flex flex-col items-center justify-center pointer-events-none animate-in fade-in duration-150">
-          <ImageIcon className="w-10 h-10 text-zinc-800 mb-2" />
+        <div className="absolute inset-4 z-50 rounded-2xl border-2 border-dashed border-zinc-950 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none animate-scale-in">
+          <div className="w-14 h-14 rounded-2xl bg-zinc-100 border border-zinc-200 flex items-center justify-center mb-3">
+            <ImageIcon className="w-7 h-7 text-zinc-800" />
+          </div>
           <p className="text-sm font-semibold text-zinc-950">
             Drop image to encrypt and send
           </p>
@@ -219,12 +225,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
       <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-3 space-y-4">
         {decryptedMessages.length === 0 ? (
           /* Empty State for Newly Created Chat */
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4 my-auto">
-            <div className="w-12 h-12 rounded-xl bg-zinc-100 border border-zinc-200 text-zinc-900 flex items-center justify-center">
-              <Lock className="w-6 h-6 stroke-[2]" />
+          <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4 my-auto animate-fade-in-up">
+            <div className="w-14 h-14 rounded-2xl bg-zinc-50 border border-zinc-200 text-zinc-900 flex items-center justify-center animate-float">
+              <Lock className="w-7 h-7 stroke-[1.8]" />
             </div>
 
-            <div className="space-y-1.5 max-w-sm">
+            <div className="space-y-2 max-w-sm">
               <h3 className="text-base font-bold text-zinc-950 tracking-tight">
                 This conversation is encrypted & ephemeral
               </h3>
@@ -237,8 +243,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <div className="pt-2">
               <button
                 type="button"
+                id="chat-empty-share"
                 onClick={onOpenShareModal}
-                className="px-5 py-2.5 rounded-lg btn-black text-xs font-semibold flex items-center gap-2 cursor-pointer"
+                className="px-5 py-2.5 rounded-xl btn-black text-xs font-semibold flex items-center gap-2 cursor-pointer"
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span>Share Invitation Link</span>
@@ -254,9 +261,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
               return (
                 <div
                   key={msg.id}
-                  className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${isMe ? 'justify-end' : 'justify-start'} message-bubble`}
                 >
-                  <div className="py-1.5 px-3 rounded-lg bg-zinc-100 border border-zinc-200 text-zinc-400 text-xs italic">
+                  <div className="py-1.5 px-3 rounded-lg bg-zinc-50 border border-zinc-200 text-zinc-400 text-xs italic">
                     This message was deleted.
                   </div>
                 </div>
@@ -266,7 +273,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             return (
               <div
                 key={msg.id}
-                className={`group flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`}
+                className={`group flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1 ${isMe ? 'message-bubble-self' : 'message-bubble'}`}
               >
                 {/* Sender Identity & Time */}
                 <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 px-1">
@@ -284,18 +291,18 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <div className={`relative flex items-center gap-2 max-w-[85%] sm:max-w-[75%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                   {/* Message Bubble */}
                   <div
-                    className={`p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                    className={`p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed transition-shadow duration-200 ${
                       isMe
-                        ? 'bg-zinc-950 text-white rounded-tr-xs shadow-xs'
-                        : 'bg-zinc-100 text-zinc-950 rounded-tl-xs border border-zinc-200/80 shadow-xs'
+                        ? 'bg-gradient-to-br from-zinc-900 to-zinc-950 text-white rounded-tr-sm shadow-sm hover:shadow-md'
+                        : 'bg-zinc-50 text-zinc-950 rounded-tl-sm border border-zinc-200/80 shadow-xs hover:shadow-sm'
                     }`}
                   >
                     {/* Reply Reference */}
                     {msg.decrypted?.replyTo && (
                       <div className={`mb-2 pl-2.5 py-1 text-[11px] border-l-2 rounded-r-md ${
                         isMe
-                          ? 'border-zinc-400 bg-zinc-900 text-zinc-300'
-                          : 'border-zinc-400 bg-zinc-200/80 text-zinc-700'
+                          ? 'border-zinc-500 bg-white/10 text-zinc-300'
+                          : 'border-zinc-300 bg-zinc-100 text-zinc-600'
                       }`}>
                         <div className="font-semibold">
                           {msg.decrypted.replyTo.senderName}
@@ -315,10 +322,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         <img
                           src={msg.decrypted.attachment.dataUrl}
                           alt="Decrypted attachment"
-                          className="max-h-64 sm:max-h-80 w-auto object-cover rounded-lg"
+                          className="max-h-64 sm:max-h-80 w-auto object-cover rounded-lg transition-transform duration-300 group-hover/img:scale-[1.02]"
                         />
-                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity">
-                          <Maximize2 className="w-5 h-5 text-white" />
+                        <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 flex items-center justify-center transition-all duration-300">
+                          <Maximize2 className="w-5 h-5 text-white opacity-0 group-hover/img:opacity-100 transition-opacity duration-200" />
                         </div>
                       </div>
                     )}
@@ -332,12 +339,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   </div>
 
                   {/* Micro Actions Menu on Hover */}
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 bg-white border border-zinc-200 rounded-lg p-1 shadow-sm">
+                  <div className="opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-0.5 shrink-0 bg-white border border-zinc-200 rounded-xl p-1 shadow-sm">
                     {/* Reply */}
                     <button
                       type="button"
                       onClick={() => setReplyingTo(msg)}
-                      className="p-1 text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 rounded transition-colors cursor-pointer"
+                      className="p-1.5 text-zinc-400 hover:text-zinc-950 hover:bg-zinc-100 rounded-lg transition-all duration-150 cursor-pointer"
                       title="Reply"
                     >
                       <Reply className="w-3.5 h-3.5" />
@@ -348,7 +355,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleDeleteOwnMessage(msg)}
-                        className="p-1 text-zinc-500 hover:text-rose-600 hover:bg-zinc-100 rounded transition-colors cursor-pointer"
+                        className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-150 cursor-pointer"
                         title="Delete for everyone"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -367,10 +374,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           key={emoji}
                           type="button"
                           onClick={() => handleToggleReaction(msg, emoji)}
-                          className={`px-2 py-0.5 rounded-full text-[11px] flex items-center gap-1 transition-all cursor-pointer border ${
+                          className={`px-2 py-0.5 rounded-full text-[11px] flex items-center gap-1 transition-all duration-200 cursor-pointer border ${
                             hasReacted
-                              ? 'bg-zinc-950 border-zinc-950 text-white'
-                              : 'bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-50'
+                              ? 'bg-zinc-950 border-zinc-950 text-white scale-105'
+                              : 'bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-50 hover:scale-105'
                           }`}
                         >
                           <span>{emoji}</span>
@@ -387,13 +394,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Active Typing Indicator */}
+      {/* Active Typing Indicator — Premium bouncing dots */}
       {typingPeers.length > 0 && (
-        <div className="shrink-0 px-4 py-1 text-[11px] text-zinc-600 flex items-center gap-1.5 animate-pulse font-mono">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-zinc-800" />
+        <div className="shrink-0 px-4 py-1.5 text-[11px] text-zinc-600 flex items-center gap-2 font-mono animate-fade-in">
+          <div className="typing-indicator">
+            <span />
+            <span />
+            <span />
+          </div>
           <span>
             {typingPeers.map((p) => p.displayName).join(', ')}{' '}
-            {typingPeers.length === 1 ? 'is typing...' : 'are typing...'}
+            {typingPeers.length === 1 ? 'is typing…' : 'are typing…'}
           </span>
         </div>
       )}
@@ -402,7 +413,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       <div className="shrink-0 pt-2 pb-1 bg-white">
         {/* Reply Reference Preview */}
         {replyingTo && (
-          <div className="mb-2 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between gap-2 text-xs">
+          <div className="mb-2 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between gap-2 text-xs animate-slide-up">
             <div className="flex items-center gap-2 truncate">
               <CornerDownRight className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
               <span className="text-zinc-500">
@@ -419,7 +430,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <button
               type="button"
               onClick={() => setReplyingTo(null)}
-              className="p-1 text-zinc-400 hover:text-zinc-900 cursor-pointer"
+              className="p-1 text-zinc-400 hover:text-zinc-900 cursor-pointer transition-colors"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -428,7 +439,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
         {/* Pending Image Attachment Preview */}
         {pendingAttachment && (
-          <div className="mb-2 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between gap-3 text-xs">
+          <div className="mb-2 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between gap-3 text-xs animate-slide-up">
             <div className="flex items-center gap-3">
               <img
                 src={pendingAttachment.dataUrl}
@@ -447,7 +458,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <button
               type="button"
               onClick={() => setPendingAttachment(null)}
-              className="p-1 text-zinc-400 hover:text-zinc-900 cursor-pointer"
+              className="p-1 text-zinc-400 hover:text-zinc-900 cursor-pointer transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -456,12 +467,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
         {/* Upload Error Banner */}
         {uploadError && (
-          <div className="mb-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between">
+          <div className="mb-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between animate-fade-in">
             <span>{uploadError}</span>
             <button
               type="button"
               onClick={() => setUploadError('')}
-              className="p-1 text-rose-500 hover:text-rose-700 cursor-pointer"
+              className="p-1 text-rose-500 hover:text-rose-700 cursor-pointer transition-colors"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -470,7 +481,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
         {/* Quick Emoji Picker Drawer */}
         {showEmojiPicker && (
-          <div className="mb-2 p-3 rounded-2xl bg-white shadow-lg border border-zinc-200 max-h-48 overflow-y-auto space-y-2">
+          <div className="mb-2 p-3 rounded-2xl bg-white shadow-lg border border-zinc-200 max-h-48 overflow-y-auto space-y-2 animate-slide-up">
             <div className="flex items-center justify-between pb-1 border-b border-zinc-100">
               <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
                 Select Emoji
@@ -478,7 +489,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowEmojiPicker(false)}
-                className="text-zinc-400 hover:text-zinc-950 cursor-pointer"
+                className="text-zinc-400 hover:text-zinc-950 cursor-pointer transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -495,7 +506,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     setMessageText((prev) => prev + emo);
                     setShowEmojiPicker(false);
                   }}
-                  className="p-1.5 rounded-lg hover:bg-zinc-100 transition-colors text-center cursor-pointer"
+                  className="p-1.5 rounded-lg hover:bg-zinc-100 hover:scale-110 transition-all duration-150 text-center cursor-pointer"
                 >
                   {emo}
                 </button>
@@ -510,7 +521,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             e.preventDefault();
             handleSendMessage(e);
           }}
-          className="flex items-center gap-2 p-1.5 rounded-xl bg-white border border-zinc-200 shadow-xs focus-within:border-zinc-950 focus-within:ring-1 focus-within:ring-zinc-950 transition-all"
+          className="flex items-center gap-2 p-1.5 rounded-xl bg-white border border-zinc-200 shadow-xs focus-within:border-zinc-400 focus-within:shadow-sm transition-all duration-200"
         >
           {/* File Upload Hidden Input */}
           <input
@@ -528,8 +539,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
           {/* Attach Image Button */}
           <button
             type="button"
+            id="chat-attach-image"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-950 hover:bg-zinc-100 transition-colors cursor-pointer"
+            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-950 hover:bg-zinc-100 transition-all duration-200 cursor-pointer"
             title="Attach image (client-side compressed & encrypted)"
           >
             <ImageIcon className="w-4 h-4" />
@@ -538,8 +550,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
           {/* Emoji Drawer Toggle */}
           <button
             type="button"
+            id="chat-emoji-toggle"
             onClick={() => setShowEmojiPicker((prev) => !prev)}
-            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-950 hover:bg-zinc-100 transition-colors cursor-pointer"
+            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-950 hover:bg-zinc-100 transition-all duration-200 cursor-pointer"
             title="Insert emoji"
           >
             <Smile className="w-4 h-4" />
@@ -548,6 +561,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           {/* Message Input Box */}
           <input
             type="text"
+            id="chat-message-input"
             value={messageText}
             onChange={(e) => {
               setMessageText(e.target.value);
@@ -559,15 +573,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 handleSendMessage();
               }
             }}
-            placeholder="Type encrypted message..."
+            placeholder="Type encrypted message…"
             className="flex-1 bg-transparent px-2 py-2 text-xs sm:text-sm text-zinc-950 placeholder:text-zinc-400 focus:outline-none"
+            autoComplete="off"
           />
 
           {/* Send Button */}
           <button
             type="submit"
+            id="chat-send-btn"
             disabled={(!messageText.trim() && !pendingAttachment) || isSending}
-            className="py-2 px-3.5 rounded-lg btn-black text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="py-2 px-3.5 rounded-xl btn-black text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {isSending ? (
               <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
