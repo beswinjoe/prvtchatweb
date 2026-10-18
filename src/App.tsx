@@ -326,9 +326,9 @@ export default function App() {
       setExpiredReason(targetStatus);
       setCurrentView('expired');
 
-      // Remove secret from URL hash fragment
+      // Remove secret from URL hash fragment and reset to root path
       try {
-        window.history.replaceState(null, '', window.location.pathname);
+        window.history.replaceState(null, '', '/');
       } catch {
         // Ignore
       }
@@ -1219,7 +1219,7 @@ export default function App() {
     setIsJoiningFromUrl(false);
 
     try {
-      window.history.replaceState(null, '', window.location.pathname);
+      window.history.replaceState(null, '', '/');
     } catch {
       // Ignore
     }
@@ -1277,7 +1277,7 @@ export default function App() {
       setRoomData(null);
       setExpiredReason(null);
       try {
-        window.history.replaceState(null, '', window.location.pathname);
+        window.history.replaceState(null, '', '/');
       } catch {
         // Ignore
       }
