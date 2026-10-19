@@ -275,43 +275,45 @@
 }
 
 /* ========================================================================
-   SLIGHT MORNING HERO BACKGROUND & PALETTE
+   MORNING SKYBLUE + LIVE CLOUDY GRADIENT
+   Top: Crisp Morning Sky Blue
+   Bottom: Soft Morning Clouds / Slightly White Down
    ======================================================================== */
 
 .bg-hero-blue {
-  background-color: #EBF3FC;
+  background-color: #4A9BEF;
 }
 
 .bg-hero-gradient {
-  background: linear-gradient(180deg, #E6F0FA 0%, #F0F5FA 50%, #F9FAF8 100%);
+  background: linear-gradient(180deg, #4A9BEF 0%, #68ABF2 35%, #A5CEF8 70%, #E8F3FD 90%, #FFFFFF 100%);
 }
 
-/* Luminous, calm "slight morning" mesh gradient */
+/* Morning skyblue with live drifting clouds fading into slightly white at the bottom */
 .bg-hero-mesh {
   background: 
+    /* Live fluffy morning cloud layer along bottom */
+    radial-gradient(ellipse 85% 45% at 50% 102%, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.75) 40%, rgba(255, 255, 255, 0) 80%),
+    /* Live morning cloud puff drifting at top-right */
+    radial-gradient(ellipse 65% 38% at 85% 18%, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 65%),
+    /* Live morning cloud puff drifting at mid-left */
+    radial-gradient(ellipse 60% 42% at 12% 52%, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0) 70%),
     /* Gentle sunrise aura at top center */
-    radial-gradient(ellipse 75% 55% at 50% -12%, rgba(254, 243, 199, 0.65) 0%, rgba(254, 249, 235, 0) 70%),
-    /* Soft morning cerulean dawn at top-left */
-    radial-gradient(ellipse 65% 55% at 15% 20%, rgba(219, 234, 254, 0.7) 0%, rgba(239, 246, 255, 0) 65%),
-    /* Soft morning mist at bottom-right */
-    radial-gradient(ellipse 65% 60% at 85% 65%, rgba(224, 242, 254, 0.55) 0%, rgba(240, 249, 255, 0) 65%),
-    /* Delicate dawn blush aura at bottom-center */
-    radial-gradient(circle 28rem at 50% 85%, rgba(254, 242, 242, 0.45) 0%, transparent 60%),
-    /* Base serene morning sky horizon */
-    linear-gradient(180deg, #E6F0FA 0%, #EFF5FA 40%, #F8FAFD 75%, #FCFDFE 100%);
-  background-size: 150% 150%;
-  animation: morningGaze 14s ease-in-out infinite alternate;
+    radial-gradient(ellipse 60% 35% at 50% 0%, rgba(255, 255, 255, 0.25) 0%, transparent 60%),
+    /* Base gradient: Morning Skyblue at top -> slightly white down */
+    linear-gradient(180deg, #4A9BEF 0%, #5EA8F4 22%, #85BEF6 48%, #BCE0FB 72%, #E9F4FE 88%, #FFFFFF 100%);
+  background-size: 130% 130%;
+  animation: liveCloudDrift 16s ease-in-out infinite alternate;
 }
 
-@keyframes morningGaze {
+@keyframes liveCloudDrift {
   0% {
     background-position: 0% 0%;
   }
   50% {
-    background-position: 50% 20%;
+    background-position: 15% 10%;
   }
   100% {
-    background-position: 100% 0%;
+    background-position: 5% 20%;
   }
 }
 

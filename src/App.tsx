@@ -1328,7 +1328,7 @@ export default function App() {
     <div
       className={`min-h-screen font-sans antialiased flex flex-col transition-colors duration-300 ${
         currentView === 'landing'
-          ? 'bg-[#EAF1F9] text-[#0B132B]'
+          ? 'bg-[#4A9BEF] text-[#0B132B]'
           : 'bg-[#F4F7FB] text-zinc-900'
       }`}
     >

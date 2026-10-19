@@ -21,27 +21,27 @@ export const LandingView: React.FC<LandingViewProps> = ({
 }) => {
   return (
     <div className="relative flex-1 flex flex-col justify-between bg-hero-mesh text-[#0B132B] overflow-hidden">
-      {/* Ambient Morning Radiance Orbs */}
+      {/* Live Morning Cloud Formations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-        {/* Soft early sunrise warmth */}
+        {/* Soft morning cloud puff top-right */}
         <div
-          className="absolute -top-28 right-[10%] w-[32rem] h-[32rem] rounded-full opacity-60 animate-float"
+          className="absolute -top-16 right-[-5%] w-[38rem] h-[22rem] rounded-full opacity-45 blur-3xl animate-float"
           style={{
-            background: 'radial-gradient(circle, rgba(254, 243, 199, 0.6) 0%, rgba(254, 249, 235, 0.15) 50%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.4) 45%, transparent 70%)',
           }}
         />
-        {/* Fresh morning sky luminescence */}
+        {/* Soft morning cloud puff mid-left */}
         <div
-          className="absolute -bottom-32 -left-20 w-[30rem] h-[30rem] rounded-full opacity-50"
+          className="absolute top-1/3 -left-20 w-[42rem] h-[26rem] rounded-full opacity-40 blur-3xl animate-float-slow"
           style={{
-            background: 'radial-gradient(circle, rgba(219, 234, 254, 0.55) 0%, rgba(239, 246, 255, 0.15) 50%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.35) 45%, transparent 70%)',
           }}
         />
-        {/* Gentle morning mist radiance */}
+        {/* Puffy morning cloud horizon layer along bottom (slightly white down) */}
         <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[42rem] h-[42rem] rounded-full opacity-35"
+          className="absolute -bottom-24 inset-x-0 h-[28rem] opacity-75 pointer-events-none blur-2xl"
           style={{
-            background: 'radial-gradient(circle, rgba(255, 255, 255, 0.75) 0%, transparent 65%)',
+            background: 'radial-gradient(ellipse 90% 65% at 50% 100%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.8) 40%, transparent 80%)',
           }}
         />
       </div>
@@ -50,23 +50,23 @@ export const LandingView: React.FC<LandingViewProps> = ({
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 sm:px-6 text-center max-w-4xl mx-auto pt-8 pb-14 sm:pt-12 sm:pb-20">
         <div className="stagger-children">
           {/* Top Centered Pill Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-surface text-[#0B132B] text-xs font-medium mb-8 shadow-xs border border-white/90">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-surface text-[#0B132B] text-xs font-medium mb-8 shadow-sm">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse-glow" />
             <span>End-to-End Encrypted Workspace</span>
-            <Sparkles className="w-3.5 h-3.5 text-amber-500 opacity-80" />
+            <Sparkles className="w-3.5 h-3.5 text-amber-500 opacity-70" />
           </div>
 
           {/* Big Bold Headline */}
           <h1 className="text-4xl sm:text-6xl md:text-[5rem] font-bold tracking-tight text-[#0B132B] max-w-4xl leading-[1.04] mb-6">
             Your words. Your privacy.
             <br />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#0F172A] via-[#1E3A8A] to-[#0F172A]">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#0B132B] via-[#1a2844] to-[#0B132B]">
               One clear picture.
             </span>
           </h1>
 
           {/* Calm Supporting Paragraph */}
-          <p className="text-base sm:text-lg md:text-xl text-[#1E293B]/80 max-w-2xl font-normal leading-relaxed mb-10 mx-auto">
+          <p className="text-base sm:text-lg md:text-xl text-[#142347]/85 max-w-2xl font-normal leading-relaxed mb-10 mx-auto">
             PRVTCHAT brings your conversations, encrypted notes, and temporary rooms into a calm, private workspace.
             Built for absolute precision with zero server logs or bank credentials required.
           </p>
@@ -96,7 +96,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
           </div>
 
           {/* Subtle join link */}
-          <p className="text-xs text-[#1E293B]/70 mb-12">
+          <p className="text-xs text-[#142347]/75 mb-12">
             Already received an invitation?{' '}
             <button
               type="button"
@@ -130,7 +130,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
       {/* Seamless Minimal Bottom Bar */}
       <footer className="relative z-10 py-5 px-6">
-        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#1E293B]/70">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#142347]/75">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#0B132B]/60" />
             <span className="font-semibold text-[#0B132B]">PRVTCHAT</span>
