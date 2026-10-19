@@ -213,18 +213,30 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden sm:inline">Share Link</span>
             </button>
 
-            {/* Role-governed action: Owner destroys, Member leaves */}
+            {/* Role-governed action: Owner can leave or destroy, Member can leave */}
             {isOwner ? (
-              <button
-                type="button"
-                id="navbar-destroy"
-                onClick={onOpenRevokeConfirm}
-                className="px-3.5 py-1.5 rounded-lg btn-danger text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-all duration-200"
-                title="Permanently destroy conversation and delete messages (Owner only)"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                <span>Destroy Chat</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="navbar-leave"
+                  onClick={onLeaveConversation}
+                  className="px-3 py-1.5 rounded-lg btn-outline text-xs font-medium text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 flex items-center gap-1.5 cursor-pointer transition-all duration-200"
+                  title="Leave conversation and return to homepage"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-zinc-600" />
+                  <span className="hidden sm:inline">Leave</span>
+                </button>
+                <button
+                  type="button"
+                  id="navbar-destroy"
+                  onClick={onOpenRevokeConfirm}
+                  className="px-3.5 py-1.5 rounded-lg btn-danger text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-all duration-200"
+                  title="Permanently destroy conversation and delete messages (Owner only)"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Destroy Chat</span>
+                </button>
+              </div>
             ) : (
               <button
                 type="button"

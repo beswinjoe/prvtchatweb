@@ -107,22 +107,29 @@ export const ExpiredView: React.FC<ExpiredViewProps> = ({
             <span>Start a New Private Chat</span>
           </button>
 
-          <a
-            href="/"
+          <button
+            type="button"
             id="expired-return-home"
             onClick={() => {
               try {
-                if (onReturnHome) onReturnHome();
-              } catch (err) {
-                console.error('onReturnHome error:', err);
+                window.history.replaceState(null, '', '/');
+              } catch {
+                // Ignore
               }
-              // Always ensure full clean navigation to root homepage
-              window.location.href = '/';
+              if (onReturnHome) {
+                try {
+                  onReturnHome();
+                  return;
+                } catch (err) {
+                  console.error('onReturnHome error:', err);
+                }
+              }
+              window.location.replace('/');
             }}
-            className="w-full py-2.5 px-4 rounded-xl btn-outline text-xs font-medium cursor-pointer flex items-center justify-center no-underline text-zinc-900 transition-all duration-200"
+            className="w-full py-2.5 px-4 rounded-xl btn-outline text-xs font-medium cursor-pointer flex items-center justify-center text-zinc-900 transition-all duration-200"
           >
             Return to Homepage
-          </a>
+          </button>
         </div>
       </div>
     </main>

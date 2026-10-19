@@ -4,6 +4,7 @@ import {
   formatTimestamp,
   generateSecureRoomSlug,
   getParticipantColor,
+  parseInviteUrl,
   sanitizeSlug,
   validateSlug,
 } from './utils';
@@ -66,5 +67,49 @@ describe('Utility and Slug Functions', () => {
     expect(palette1.border).toBeDefined();
     expect(palette1.dot).toBeDefined();
     expect(palette3.bg).toBeDefined();
+  });
+
+  describe('parseInviteUrl', () => {
+    it('parses room slug from query and key from hash fragment', () => {
+      const url = 'https://prvtchat.link/?room=azure-harbor-123456#key=abcdef1234567890abcdef';
+      const parsed = parseInviteUrl(url);
+      expect(parsed).toEqual({
+        slug: 'azure-harbor-123456',
+        key: 'abcdef1234567890abcdef',
+      });
+    });
+
+    it('parses both slug and key from hash fragment', () => {
+      const url = 'https://prvtchat.link/#room=swift-ridge-998877&key=secretkey1234567890';
+      const parsed = parseInviteUrl(url);
+      expect(parsed).toEqual({
+        slug: 'swift-ridge-998877',
+        key: 'secretkey1234567890',
+      });
+    });
+
+    it('parses slug from pathname and key from hash fragment', () => {
+      const url = 'https://prvtchat.link/quiet-cove-112233#key=secretkey1234567890';
+      const parsed = parseInviteUrl(url);
+      expect(parsed).toEqual({
+        slug: 'quiet-cove-112233',
+        key: 'secretkey1234567890',
+      });
+    });
+
+    it('returns null if key is missing', () => {
+      const url = 'https://prvtchat.link/?room=no-key-room';
+      expect(parseInviteUrl(url)).toBeNull();
+    });
+
+    it('returns null if slug is missing', () => {
+      const url = 'https://prvtchat.link/#key=secretkey1234567890';
+      expect(parseInviteUrl(url)).toBeNull();
+    });
+
+    it('handles malformed URLs gracefully without throwing', () => {
+      expect(parseInviteUrl('not a valid url :::')).toBeNull();
+      expect(parseInviteUrl('')).toBeNull();
+    });
   });
 });

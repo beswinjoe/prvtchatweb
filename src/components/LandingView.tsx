@@ -20,7 +20,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onOpenSecurityModal,
 }) => {
   return (
-    <div className="relative flex-1 flex flex-col justify-between bg-hero-mesh text-[#0B132B] overflow-hidden">
+    <div className="relative flex-1 flex flex-col justify-between bg-transparent text-[#0B132B] overflow-hidden">
       {/* Live Morning Cloud Formations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
         {/* Soft morning cloud puff top-right */}
@@ -128,8 +128,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
         </div>
       </main>
 
-      {/* Seamless Minimal Bottom Bar */}
-      <footer className="relative z-10 py-5 px-6">
+      {/* Seamless Minimal Bottom Bar & Disclaimer */}
+      <footer className="relative z-10 pt-4 pb-8 px-6">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#142347]/75">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#0B132B]/60" />
@@ -159,6 +159,13 @@ export const LandingView: React.FC<LandingViewProps> = ({
               <ExternalLink className="w-3 h-3 opacity-60" />
             </a>
           </div>
+        </div>
+
+        {/* Pharmaceutical Disclaimer */}
+        <div className="max-w-2xl mx-auto text-center px-4 pt-6">
+          <p className="text-[8px] sm:text-[9px] leading-relaxed text-[#0B132B]/45 tracking-wide hover:text-[#0B132B]/75 transition-colors italic">
+            ⚠️ CAUTION: PRVTCHAT® may cause excessive feelings of privacy, sudden distrust of unencrypted messaging apps, and compulsive link-sharing behavior. Side effects include: whispering while typing, paranoia about plaintext, and an overwhelming urge to say &quot;it&apos;s encrypted&quot; in every conversation. If your conversation persists beyond 7 days, please create a new room. Not responsible for secrets you accidentally reveal by hitting send too early. We don&apos;t store, read, or judge your messages — we literally can&apos;t. Use responsibly. Keep out of reach of hackers. Individual encryption results may vary. No animals were harmed in the making of this chat. If you experience a sudden loss of plaintext, do not panic — this is working as intended.
+          </p>
         </div>
       </footer>
     </div>

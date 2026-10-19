@@ -134,3 +134,76 @@ export function getParticipantColor(uid?: string): ParticipantPalette {
   }
   return palettes[Math.abs(hash) % palettes.length];
 }
+
+export interface InviteUrlPayload {
+  slug: string;
+  key: string;
+}
+
+/**
+ * Parses invitation URLs across query parameters, hash fragments, and pathname routes.
+ * Decryption key is intentionally kept in hash fragments or query fallback.
+ */
+export function parseInviteUrl(urlStr?: string): InviteUrlPayload | null {
+  try {
+    let search = '';
+    let hash = '';
+    let pathname = '';
+
+    if (urlStr) {
+      const parsed = new URL(urlStr, 'https://prvtchat.link');
+      search = parsed.search;
+      hash = parsed.hash;
+      pathname = parsed.pathname;
+    } else if (typeof window !== 'undefined') {
+      search = window.location.search || '';
+      hash = window.location.hash || '';
+      pathname = window.location.pathname || '';
+    } else {
+      return null;
+    }
+
+    const searchParams = new URLSearchParams(search);
+    const cleanHash = hash.replace(/^[#/?]+/, '');
+    const hashParams = new URLSearchParams(cleanHash);
+
+    // 1. Resolve slug from search (?room=, ?slug=), hash (#slug=, #room=), or path (/slug)
+    let slug =
+      searchParams.get('room') ||
+      searchParams.get('slug') ||
+      hashParams.get('room') ||
+      hashParams.get('slug') ||
+      '';
+
+    if (!slug && pathname) {
+      const match = pathname.match(/^\/([a-zA-Z0-9-_]{3,64})/);
+      if (match && match[1] && match[1] !== 'index.html') {
+        slug = match[1];
+      }
+    }
+
+    // 2. Resolve key from hash (#key=), search (?key=), or regex fallback
+    let key =
+      hashParams.get('key') ||
+      searchParams.get('key') ||
+      '';
+
+    if (!key) {
+      const combined = hash + search;
+      const keyMatch = combined.match(/[#&?]key=([A-Za-z0-9_-]{16,128})/);
+      if (keyMatch) {
+        key = keyMatch[1];
+      }
+    }
+
+    if (slug && key) {
+      return {
+        slug: slug.trim(),
+        key: key.trim(),
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

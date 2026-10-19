@@ -267,17 +267,28 @@ export const ChatView: React.FC<ChatViewProps> = ({
             )}
           </button>
 
-          {/* Role-governed action: Owner can destroy conversation, Members can leave */}
+          {/* Role-governed action: Owner can leave or destroy conversation, Members can leave */}
           {isOwner ? (
-            <button
-              type="button"
-              id="chat-destroy-btn"
-              onClick={onOpenRevokeConfirm}
-              className="p-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 transition-all duration-200 cursor-pointer border border-transparent hover:border-rose-200"
-              title="Destroy this conversation (Owner only)"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                id="chat-owner-leave-btn"
+                onClick={onLeaveRoom}
+                className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-all duration-200 cursor-pointer border border-transparent hover:border-zinc-200"
+                title="Leave conversation and return to homepage"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                id="chat-destroy-btn"
+                onClick={onOpenRevokeConfirm}
+                className="p-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 transition-all duration-200 cursor-pointer border border-transparent hover:border-rose-200"
+                title="Destroy this conversation (Owner only)"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
           ) : (
             <button
               type="button"

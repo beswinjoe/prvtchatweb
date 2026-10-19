@@ -53,7 +53,7 @@ import {
   revokeRoomAuthoritative,
   transferOwnershipAuthoritative,
 } from './lib/roomManager';
-import { generateSecureRoomSlug, sanitizeSlug, validateSlug } from './lib/utils';
+import { generateSecureRoomSlug, parseInviteUrl, sanitizeSlug, validateSlug } from './lib/utils';
 import type {
   ActivePeer,
   AppView,
@@ -72,58 +72,6 @@ import type {
 
 // Injected auth token support (for Canvas/Firebase container runtime)
 declare const __initial_auth_token: string | undefined;
-
-function parseInviteUrl(): { slug: string; key: string } | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const search = window.location.search || '';
-    const hash = window.location.hash || '';
-    const pathname = window.location.pathname || '';
-
-    const searchParams = new URLSearchParams(search);
-    const cleanHash = hash.replace(/^[#/?]+/, '');
-    const hashParams = new URLSearchParams(cleanHash);
-
-    // 1. Resolve slug from search (?room=, ?slug=), hash (#slug=, #room=), or path (/slug)
-    let slug =
-      searchParams.get('room') ||
-      searchParams.get('slug') ||
-      hashParams.get('room') ||
-      hashParams.get('slug') ||
-      '';
-
-    if (!slug && pathname) {
-      const match = pathname.match(/^\/([a-zA-Z0-9-_]{3,64})/);
-      if (match && match[1] && match[1] !== 'index.html') {
-        slug = match[1];
-      }
-    }
-
-    // 2. Resolve key from hash (#key=), search (?key=), or regex fallback
-    let key =
-      hashParams.get('key') ||
-      searchParams.get('key') ||
-      '';
-
-    if (!key) {
-      const combined = hash + search;
-      const keyMatch = combined.match(/[#&?]key=([A-Za-z0-9_-]{16,128})/);
-      if (keyMatch) {
-        key = keyMatch[1];
-      }
-    }
-
-    if (slug && key) {
-      return {
-        slug: slug.trim(),
-        key: key.trim(),
-      };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 const initialInvite = parseInviteUrl();
 
@@ -455,15 +403,15 @@ export default function App() {
   useEffect(() => {
     if (!authReady) return;
 
-    if (!user) {
-      setIsJoiningFromUrl(false);
-      if (initialInvite) {
-        setCurrentView((prev) => (prev !== 'landing' ? 'landing' : prev));
-      }
-      return;
-    }
-
     const checkUrlForInvitation = async () => {
+      if (!user) {
+        setIsJoiningFromUrl(false);
+        if (initialInvite) {
+          setCurrentView((prev) => (prev !== 'landing' ? 'landing' : prev));
+        }
+        return;
+      }
+
       try {
         const invite = parseInviteUrl();
         if (invite) {
@@ -482,22 +430,23 @@ export default function App() {
   // EFFECT 4: Slug Availability Checker (When Creating)
   // --------------------------------------------------------------------------
   useEffect(() => {
-    if (!user || !showCreateModal || !slugInput.trim()) {
-      setSlugStatus((prev) => (prev.reason || prev.checking ? { checking: false, available: true, reason: '' } : prev));
-      return;
-    }
-
-    const cleaned = sanitizeSlug(slugInput);
-    const validation = validateSlug(cleaned);
-    if (!validation.valid) {
-      setSlugStatus({ checking: false, available: false, reason: validation.reason });
-      return;
-    }
-
     let cancelled = false;
-    setSlugStatus({ checking: true, available: false, reason: 'Checking availability...' });
 
     const timer = setTimeout(async () => {
+      if (!user || !showCreateModal || !slugInput.trim()) {
+        setSlugStatus((prev) => (prev.reason || prev.checking ? { checking: false, available: true, reason: '' } : prev));
+        return;
+      }
+
+      const cleaned = sanitizeSlug(slugInput);
+      const validation = validateSlug(cleaned);
+      if (!validation.valid) {
+        setSlugStatus({ checking: false, available: false, reason: validation.reason });
+        return;
+      }
+
+      setSlugStatus({ checking: true, available: false, reason: 'Checking availability...' });
+
       try {
         const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', cleaned);
         const snap = await getDoc(roomRef);
@@ -634,13 +583,13 @@ export default function App() {
   // EFFECT 6: Client-Side Message Decryption Pipeline
   // --------------------------------------------------------------------------
   useEffect(() => {
-    if (!activeCryptoKey || currentView !== 'chat') {
-      setDecryptedMessages((prev) => (prev.length > 0 ? [] : prev));
-      return;
-    }
-
     let cancelled = false;
     const decryptAll = async () => {
+      if (!activeCryptoKey || currentView !== 'chat') {
+        setDecryptedMessages((prev) => (prev.length > 0 ? [] : prev));
+        return;
+      }
+
       const results = await Promise.all(
         encryptedMessages.map(async (msg): Promise<DecryptedMessage> => {
           if (msg.deleted) {
@@ -721,12 +670,12 @@ export default function App() {
   // --------------------------------------------------------------------------
   const [activePeers, setActivePeers] = useState<ActivePeer[]>([]);
   useEffect(() => {
-    if (!activeCryptoKey || currentView !== 'chat') {
-      setActivePeers((prev) => (prev.length > 0 ? [] : prev));
-      return;
-    }
     let cancelled = false;
     const decryptPeers = async () => {
+      if (!activeCryptoKey || currentView !== 'chat') {
+        setActivePeers((prev) => (prev.length > 0 ? [] : prev));
+        return;
+      }
       const cutoff = Date.now() - 35000;
       const validRecords = presenceList.filter((p) => p.lastSeen && p.lastSeen > cutoff);
       const out: ActivePeer[] = [];
@@ -799,7 +748,7 @@ export default function App() {
       roomData.expiresAt &&
       nowTick >= roomData.expiresAt
     ) {
-      purgeAndExpireRoom(activeSlug, 'expired');
+      void Promise.resolve().then(() => purgeAndExpireRoom(activeSlug, 'expired'));
     }
   }, [nowTick, currentView, roomData, activeSlug, purgeAndExpireRoom]);
 
@@ -1204,8 +1153,10 @@ export default function App() {
   // --------------------------------------------------------------------------
   useEffect(() => {
     if (!user || currentView !== 'chat' || !activeSlug) {
-      setRoomMembers((prev) => (prev.length > 0 ? [] : prev));
-      return;
+      const timer = setTimeout(() => {
+        setRoomMembers((prev) => (prev.length > 0 ? [] : prev));
+      }, 0);
+      return () => clearTimeout(timer);
     }
     const unsub = listenToRoomMembers(activeSlug, (members) => {
       setRoomMembers(members);
@@ -1328,7 +1279,7 @@ export default function App() {
     <div
       className={`min-h-screen font-sans antialiased flex flex-col transition-colors duration-300 ${
         currentView === 'landing'
-          ? 'bg-[#4A9BEF] text-[#0B132B]'
+          ? 'bg-hero-mesh text-[#0B132B]'
           : 'bg-[#F4F7FB] text-zinc-900'
       }`}
     >
@@ -1351,7 +1302,7 @@ export default function App() {
       {/* Main Views */}
       {/* Instant connecting screen when opening an invite link */}
       {currentView === 'landing' && isJoiningFromUrl && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6 bg-hero-mesh">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6 bg-transparent">
           <div className="stagger-children flex flex-col items-center gap-5">
             <div className="w-20 h-20 rounded-3xl bg-white/85 backdrop-blur-md border border-white/80 flex items-center justify-center shadow-lg animate-float">
               <svg className="w-10 h-10 text-[#0B132B]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -1370,22 +1321,11 @@ export default function App() {
       )}
 
       {currentView === 'landing' && !isJoiningFromUrl && (
-        <>
-          <LandingView
-            onOpenCreateModal={handleOpenCreateModal}
-            onOpenJoinModal={() => setShowJoinModal(true)}
-            onOpenSecurityModal={() => handleOpenSecurityModal('how-it-works')}
-          />
-
-          {/* Footer: Pharmaceutical Disclaimer */}
-          <footer className="w-full px-6 pb-8 pt-2 flex flex-col items-center">
-            <div className="max-w-xl text-center px-4">
-              <p className="text-[8px] sm:text-[9px] leading-relaxed text-[#0B132B]/50 tracking-wide hover:text-[#0B132B]/80 transition-colors" style={{ fontStyle: 'italic' }}>
-                ⚠️ CAUTION: PRVTCHAT® may cause excessive feelings of privacy, sudden distrust of unencrypted messaging apps, and compulsive link-sharing behavior. Side effects include: whispering while typing, paranoia about plaintext, and an overwhelming urge to say &quot;it&apos;s encrypted&quot; in every conversation. If your conversation persists beyond 7 days, please create a new room. Not responsible for secrets you accidentally reveal by hitting send too early. We don&apos;t store, read, or judge your messages — we literally can&apos;t. Use responsibly. Keep out of reach of hackers. Individual encryption results may vary. No animals were harmed in the making of this chat. If you experience a sudden loss of plaintext, do not panic — this is working as intended.
-              </p>
-            </div>
-          </footer>
-        </>
+        <LandingView
+          onOpenCreateModal={handleOpenCreateModal}
+          onOpenJoinModal={() => setShowJoinModal(true)}
+          onOpenSecurityModal={() => handleOpenSecurityModal('how-it-works')}
+        />
       )}
 
       {currentView === 'chat' && (

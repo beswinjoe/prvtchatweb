@@ -6,9 +6,9 @@
   }
   
   :root {
-    /* Curated Premium Color Palette */
-    --bg-hero: #5B9EEA;
-    --bg-hero-dark: #4A8BD9;
+    /* Curated Morning Skyblue Color Palette */
+    --bg-hero: #4A9BEF;
+    --bg-hero-dark: #3E8DE2;
     --bg-canvas: #F0F5FD;
     --bg-surface: #FFFFFF;
     --bg-surface-elevated: #FAFBFD;
@@ -43,7 +43,7 @@
     min-height: 100vh;
     margin: 0;
     padding: 0;
-    background-color: #5B9EEA;
+    background-color: #4A9BEF;
     color: #0B132B;
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     letter-spacing: -0.015em;
@@ -301,20 +301,9 @@
     radial-gradient(ellipse 60% 35% at 50% 0%, rgba(255, 255, 255, 0.25) 0%, transparent 60%),
     /* Base gradient: Morning Skyblue at top -> slightly white down */
     linear-gradient(180deg, #4A9BEF 0%, #5EA8F4 22%, #85BEF6 48%, #BCE0FB 72%, #E9F4FE 88%, #FFFFFF 100%);
-  background-size: 130% 130%;
-  animation: liveCloudDrift 16s ease-in-out infinite alternate;
-}
-
-@keyframes liveCloudDrift {
-  0% {
-    background-position: 0% 0%;
-  }
-  50% {
-    background-position: 15% 10%;
-  }
-  100% {
-    background-position: 5% 20%;
-  }
+  background-attachment: fixed;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 
 /* ========================================================================
