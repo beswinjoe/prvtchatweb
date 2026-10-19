@@ -456,10 +456,10 @@ export default function App() {
     if (!authReady) return;
 
     if (!user) {
-      if (initialInvite) {
-        setCurrentView('landing');
-      }
       setIsJoiningFromUrl(false);
+      if (initialInvite) {
+        setCurrentView((prev) => (prev !== 'landing' ? 'landing' : prev));
+      }
       return;
     }
 
@@ -1204,7 +1204,7 @@ export default function App() {
   // --------------------------------------------------------------------------
   useEffect(() => {
     if (!user || currentView !== 'chat' || !activeSlug) {
-      setRoomMembers([]);
+      setRoomMembers((prev) => (prev.length > 0 ? [] : prev));
       return;
     }
     const unsub = listenToRoomMembers(activeSlug, (members) => {
@@ -1328,7 +1328,7 @@ export default function App() {
     <div
       className={`min-h-screen font-sans antialiased flex flex-col transition-colors duration-300 ${
         currentView === 'landing'
-          ? 'bg-[#5B9EEA] text-[#0B132B]'
+          ? 'bg-[#EAF1F9] text-[#0B132B]'
           : 'bg-[#F4F7FB] text-zinc-900'
       }`}
     >
@@ -1353,17 +1353,17 @@ export default function App() {
       {currentView === 'landing' && isJoiningFromUrl && (
         <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6 bg-hero-mesh">
           <div className="stagger-children flex flex-col items-center gap-5">
-            <div className="w-20 h-20 rounded-3xl glass border border-white/25 flex items-center justify-center shadow-xl animate-float">
-              <svg className="w-10 h-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <div className="w-20 h-20 rounded-3xl bg-white/85 backdrop-blur-md border border-white/80 flex items-center justify-center shadow-lg animate-float">
+              <svg className="w-10 h-10 text-[#0B132B]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25z" />
               </svg>
             </div>
             <div className="text-center space-y-2">
-              <p className="text-white text-lg font-semibold tracking-tight">Unlocking Private Chat</p>
-              <p className="text-white/60 text-xs">Establishing encrypted connection…</p>
+              <p className="text-[#0B132B] text-lg font-bold tracking-tight">Unlocking Private Chat</p>
+              <p className="text-[#1E293B]/70 text-xs font-medium">Establishing encrypted connection…</p>
             </div>
-            <div className="w-52 h-1 rounded-full bg-white/10 overflow-hidden">
-              <div className="h-full w-1/3 bg-white/60 rounded-full animate-progress" />
+            <div className="w-52 h-1.5 rounded-full bg-black/10 overflow-hidden">
+              <div className="h-full w-1/3 bg-[#0B132B] rounded-full animate-progress" />
             </div>
           </div>
         </div>
@@ -1380,7 +1380,7 @@ export default function App() {
           {/* Footer: Pharmaceutical Disclaimer */}
           <footer className="w-full px-6 pb-8 pt-2 flex flex-col items-center">
             <div className="max-w-xl text-center px-4">
-              <p className="text-[8px] sm:text-[9px] leading-relaxed text-white/35 tracking-wide" style={{ fontStyle: 'italic' }}>
+              <p className="text-[8px] sm:text-[9px] leading-relaxed text-[#0B132B]/50 tracking-wide hover:text-[#0B132B]/80 transition-colors" style={{ fontStyle: 'italic' }}>
                 ⚠️ CAUTION: PRVTCHAT® may cause excessive feelings of privacy, sudden distrust of unencrypted messaging apps, and compulsive link-sharing behavior. Side effects include: whispering while typing, paranoia about plaintext, and an overwhelming urge to say &quot;it&apos;s encrypted&quot; in every conversation. If your conversation persists beyond 7 days, please create a new room. Not responsible for secrets you accidentally reveal by hitting send too early. We don&apos;t store, read, or judge your messages — we literally can&apos;t. Use responsibly. Keep out of reach of hackers. Individual encryption results may vary. No animals were harmed in the making of this chat. If you experience a sudden loss of plaintext, do not panic — this is working as intended.
               </p>
             </div>
